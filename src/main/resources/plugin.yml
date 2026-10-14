@@ -2,7 +2,8 @@ main: net.tfminecraft.conditionalevents.ConditionalEvents
 version: ${project.version}
 name: ConditionalEvents
 api-version: '1.21.10'
-softdepend: [PlaceholderAPI,Citizens,WorldGuardEvents,WorldGuard,ProtocolLib,DiscordSRV,ItemsAdder,PacketEvents]
+depend: [TLibs]
+softdepend: [RPCharacters,PlaceholderAPI,Citizens,WorldGuardEvents,WorldGuard,ProtocolLib,DiscordSRV,ItemsAdder,PacketEvents]
 author: Ajneb97
 
 commands:

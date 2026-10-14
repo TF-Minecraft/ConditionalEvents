@@ -61,6 +61,11 @@ public class EventsManager {
             return;
         }
 
+        // Per-character events wait until a character is in play.
+        if(player != null && !plugin.getPlayerManager().canRun(event,player)){
+            return;
+        }
+
         //Ignore if cancelled
         if(event.isIgnoreIfCancelled()){
             Event minecraftEvent = conditionEvent.getMinecraftEvent();

@@ -1,6 +1,7 @@
 package net.tfminecraft.conditionalevents.managers;
 
 import net.tfminecraft.conditionalevents.ConditionalEvents;
+import net.tfminecraft.conditionalevents.model.CEEvent;
 import net.tfminecraft.conditionalevents.configs.PlayersConfigsManager;
 import net.tfminecraft.conditionalevents.model.EventType;
 import net.tfminecraft.conditionalevents.model.internal.ConditionEvent;
@@ -75,33 +76,62 @@ public class PlayerManager {
     }
 
 
+    /** Where an event's data lives for this player: the account, or the played character. */
+    private record Scope(boolean available, UUID character) {
+        static final Scope ACCOUNT = new Scope(true, null);
+    }
+
+    private Scope scope(String eventName, Player player){
+        CEEvent event = plugin.getEventsManager().getEvent(eventName);
+        if(event == null || !event.isCharacterScoped()){
+            return Scope.ACCOUNT;
+        }
+        UUID character = plugin.getCharacterTracker().character(player.getUniqueId()).orElse(null);
+        return new Scope(character != null, character);
+    }
+
+    /** Per-character events only run while a character is in play. */
+    public boolean canRun(CEEvent event, Player player){
+        return !event.isCharacterScoped() || plugin.getCharacterTracker().character(player.getUniqueId()).isPresent();
+    }
+
     public void setEventCooldown(String eventName,Player player){
+        Scope scope = scope(eventName,player);
+        if(!scope.available()){
+            return;
+        }
         PlayerData p = getPlayer(player,true);
-        p.setCooldown(eventName,System.currentTimeMillis());
+        p.setCooldown(scope.character(),eventName,System.currentTimeMillis());
         p.setModified(true);
     }
 
     public long getEventCooldown(String eventName,Player player){
+        Scope scope = scope(eventName,player);
         PlayerData p = getPlayer(player,false);
-        if(p == null){
+        if(p == null || !scope.available()){
             return 0;
         }else{
-            return p.getCooldown(eventName);
+            return p.getCooldown(scope.character(),eventName);
         }
     }
 
     public void setEventOneTime(String eventName,Player player){
+        Scope scope = scope(eventName,player);
+        if(!scope.available()){
+            return;
+        }
         PlayerData p = getPlayer(player,true);
-        p.setOneTime(eventName,true);
+        p.setOneTime(scope.character(),eventName,true);
         p.setModified(true);
     }
 
     public boolean getEventOneTime(String eventName,Player player){
+        Scope scope = scope(eventName,player);
         PlayerData p = getPlayer(player,false);
-        if(p == null){
+        if(p == null || !scope.available()){
             return false;
         }else{
-            return p.isEventOneTime(eventName);
+            return p.isEventOneTime(scope.character(),eventName);
         }
     }
 

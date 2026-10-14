@@ -5,10 +5,11 @@ import net.tfminecraft.conditionalevents.configs.model.CommonConfig;
 import net.tfminecraft.conditionalevents.model.player.EventData;
 import net.tfminecraft.conditionalevents.model.player.GenericCallback;
 import net.tfminecraft.conditionalevents.model.player.PlayerData;
-import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -32,22 +33,7 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 		PlayerData playerData = null;
 		CommonConfig playerConfig = getConfigFile(uuid+".yml",false);
 		if(playerConfig != null){
-			// If config exists
-			FileConfiguration config = playerConfig.getConfig();
-			String name = config.getString("name");
-
-			playerData = new PlayerData(uuid,name);
-			ArrayList<EventData> eventData = new ArrayList<>();
-			if(config.contains("events")){
-				for(String key : config.getConfigurationSection("events").getKeys(false)){
-					boolean oneTime = config.getBoolean("events."+key+".one_time");
-					long cooldown = config.getLong("events."+key+".cooldown");
-					EventData event = new EventData(key,cooldown,oneTime);
-
-					eventData.add(event);
-				}
-			}
-			playerData.setEventData(eventData);
+			playerData = read(uuid,playerConfig.getConfig());
 		}
 
 		return playerData;
@@ -60,22 +46,7 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 				PlayerData playerData = null;
 				CommonConfig playerConfig = getConfigFile(uuid+".yml",false);
 				if(playerConfig != null){
-					// If config exists
-					FileConfiguration config = playerConfig.getConfig();
-					String name = config.getString("name");
-
-					playerData = new PlayerData(uuid,name);
-					ArrayList<EventData> eventData = new ArrayList<>();
-					if(config.contains("events")){
-						for(String key : config.getConfigurationSection("events").getKeys(false)){
-							boolean oneTime = config.getBoolean("events."+key+".one_time");
-							long cooldown = config.getLong("events."+key+".cooldown");
-							EventData event = new EventData(key,cooldown,oneTime);
-
-							eventData.add(event);
-						}
-					}
-					playerData.setEventData(eventData);
+					playerData = read(uuid,playerConfig.getConfig());
 				}
 
 				PlayerData finalPlayer = playerData;
@@ -90,20 +61,53 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 		}.runTaskAsynchronously(plugin);
 	}
 
-	public void saveConfig(PlayerData player){
-		String playerName = player.getName();
-		CommonConfig playerConfig = getConfigFile(player.getUuid().toString()+".yml",true);
-		FileConfiguration players = playerConfig.getConfig();
-
-		players.set("name", playerName);
-		players.set("events", null);
-
-		for(EventData event : player.getEventData()){
-			String path = "events."+event.getName();
-			players.set(path+".one_time", event.isOneTime());
-			players.set(path+".cooldown", event.getCooldown());
+	/** Account events under {@code events}, per-character events under {@code characters.<character>.events}. */
+	static PlayerData read(UUID uuid, ConfigurationSection config){
+		PlayerData playerData = new PlayerData(uuid,config.getString("name"));
+		playerData.setEventData(readEvents(config.getConfigurationSection("events")));
+		ConfigurationSection characters = config.getConfigurationSection("characters");
+		if(characters != null){
+			for(String key : characters.getKeys(false)){
+				try{
+					playerData.getCharacterEventData().put(UUID.fromString(key),readEvents(characters.getConfigurationSection(key+".events")));
+				}catch(IllegalArgumentException notCharacter){
+					// Not a character ID.
+				}
+			}
 		}
+		return playerData;
+	}
 
+	private static ArrayList<EventData> readEvents(ConfigurationSection events){
+		ArrayList<EventData> eventData = new ArrayList<>();
+		if(events != null){
+			for(String key : events.getKeys(false)){
+				eventData.add(new EventData(key,events.getLong(key+".cooldown"),events.getBoolean(key+".one_time")));
+			}
+		}
+		return eventData;
+	}
+
+	static void write(PlayerData player, ConfigurationSection players){
+		players.set("name", player.getName());
+		players.set("events", null);
+		players.set("characters", null);
+		writeEvents(players, "events", player.getEventData());
+		for(Map.Entry<UUID, ArrayList<EventData>> character : player.getCharacterEventData().entrySet()){
+			writeEvents(players, "characters."+character.getKey()+".events", character.getValue());
+		}
+	}
+
+	private static void writeEvents(ConfigurationSection players, String path, List<EventData> events){
+		for(EventData event : events){
+			players.set(path+"."+event.getName()+".one_time", event.isOneTime());
+			players.set(path+"."+event.getName()+".cooldown", event.getCooldown());
+		}
+	}
+
+	public void saveConfig(PlayerData player){
+		CommonConfig playerConfig = getConfigFile(player.getUuid().toString()+".yml",true);
+		write(player, playerConfig.getConfig());
 		playerConfig.saveConfig();
 	}
 
@@ -122,17 +126,30 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 	public void resetDataForAllPlayers(String eventName){
 		ArrayList<CommonConfig> configs = getConfigs();
 		for(CommonConfig commonConfig : configs) {
-			FileConfiguration config = commonConfig.getConfig();
-			if(eventName.equals("all")){
-				config.set("events",null);
-			}else{
-				if(!config.contains("events."+eventName)){
-					continue;
-				}
-				config.set("events."+eventName,null);
+			if(reset(commonConfig.getConfig(), eventName)){
+				commonConfig.saveConfig();
 			}
-
-			commonConfig.saveConfig();
 		}
+	}
+
+	/** Clears the event, or all events, for the account and its characters. Returns whether anything changed. */
+	static boolean reset(ConfigurationSection config, String eventName){
+		List<String> paths = new ArrayList<>();
+		paths.add("events");
+		ConfigurationSection characters = config.getConfigurationSection("characters");
+		if(characters != null){
+			for(String key : characters.getKeys(false)){
+				paths.add("characters."+key+".events");
+			}
+		}
+		boolean changed = false;
+		for(String path : paths){
+			String target = eventName.equals("all") ? path : path+"."+eventName;
+			if(config.contains(target)){
+				config.set(target,null);
+				changed = true;
+			}
+		}
+		return changed;
 	}
 }

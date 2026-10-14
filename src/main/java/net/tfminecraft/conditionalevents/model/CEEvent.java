@@ -15,6 +15,7 @@ public class CEEvent {
     private List<ActionGroup> actionGroups;
 
     private boolean oneTime;
+    private boolean characterScoped;
 
     private String ignoreWithPermission;
 
@@ -71,6 +72,15 @@ public class CEEvent {
 
     public boolean isOneTime() {
         return oneTime;
+    }
+
+    /** Whether one-time and cooldown data belong to the played character ({@code data_scope: character}). */
+    public boolean isCharacterScoped() {
+        return characterScoped;
+    }
+
+    public void setCharacterScoped(boolean characterScoped) {
+        this.characterScoped = characterScoped;
     }
 
     public void setOneTime(boolean oneTime) {
