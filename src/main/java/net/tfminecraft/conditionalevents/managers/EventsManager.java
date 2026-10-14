@@ -62,10 +62,11 @@ public class EventsManager {
             return;
         }
 
-        // Per-character events need a player playing a character, fixed here for the whole run.
+        // Events keeping per-character data need a character in play, fixed here for the whole run.
+        // Without a player there is no data to keep, as upstream.
         UUID character = null;
-        if(event.isCharacterScoped()){
-            character = player == null ? null : plugin.getPlayerManager().playedCharacter(player);
+        if(player != null && event.usesCharacterData()){
+            character = plugin.getPlayerManager().playedCharacter(player);
             if(character == null){
                 return;
             }

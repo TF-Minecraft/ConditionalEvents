@@ -83,7 +83,7 @@ public class PlayerManager {
 
     private Scope scope(String eventName, Player player){
         CEEvent event = plugin.getEventsManager().getEvent(eventName);
-        if(event == null || !event.isCharacterScoped()){
+        if(event == null || !event.usesCharacterData()){
             return Scope.ACCOUNT;
         }
         UUID character = playedCharacter(player);

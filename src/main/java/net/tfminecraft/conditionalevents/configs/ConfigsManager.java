@@ -64,7 +64,7 @@ public class ConfigsManager {
                     List<String> conditions = new ArrayList<String>();
                     List<ActionGroup> actionGroups = new ArrayList<ActionGroup>();
                     boolean oneTime = false;
-                    boolean characterScoped = false;
+                    boolean characterScoped = true;
                     String ignoreWithPermission = null;
                     long cooldown = 0;
                     boolean enabled = true;
@@ -170,9 +170,9 @@ public class ConfigsManager {
                     }
                     if(config.contains(path+".data_scope")) {
                         String scope = config.getString(path+".data_scope");
-                        characterScoped = "character".equalsIgnoreCase(scope);
-                        if(!characterScoped && !"account".equalsIgnoreCase(scope)){
-                            plugin.getLogger().warning("Event "+key+" has data_scope "+scope+"; use account or character. Using account.");
+                        characterScoped = !"account".equalsIgnoreCase(scope);
+                        if(characterScoped && !"character".equalsIgnoreCase(scope)){
+                            plugin.getLogger().warning("Event "+key+" has data_scope "+scope+"; use character or account. Using character.");
                         }
                     }
                     if(config.contains(path+".enabled")) {

@@ -34,9 +34,12 @@ class PlayerManagerScopeTest {
         when(plugin.getEventsManager()).thenReturn(events);
         when(plugin.getCharacterTracker()).thenReturn(tracker);
         CEEvent research = new CEEvent("research_bronze");
-        research.setCharacterScoped(true);
+        research.setOneTime(true);
+        CEEvent booster = new CEEvent("global_booster");
+        booster.setOneTime(true);
+        booster.setCharacterScoped(false);
         when(events.getEvent("research_bronze")).thenReturn(research);
-        when(events.getEvent("global_booster")).thenReturn(new CEEvent("global_booster"));
+        when(events.getEvent("global_booster")).thenReturn(booster);
         players = new PlayerManager(plugin);
         player = mock(Player.class);
         when(player.getUniqueId()).thenReturn(owner);
