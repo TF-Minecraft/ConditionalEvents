@@ -31,6 +31,14 @@ class PlayersConfigsManagerTest {
         assertEquals(900, loaded.getCooldown("global_booster"));
         assertTrue(loaded.isEventOneTime(character, "research_bronze"));
         assertFalse(loaded.isEventOneTime("research_bronze"));
+        assertEquals(null, loaded.getSeededTo());
+
+        data.seed(character, name -> false);
+        YamlConfiguration seeded = new YamlConfiguration();
+        PlayersConfigsManager.write(data.snapshot(), seeded);
+        assertEquals(character, PlayersConfigsManager.read(account, seeded).getSeededTo());
+        seeded.set("seeded-to", "nonsense");
+        assertEquals(null, PlayersConfigsManager.read(account, seeded).getSeededTo());
     }
 
     @Test

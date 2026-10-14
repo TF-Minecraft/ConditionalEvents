@@ -65,6 +65,14 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 	static PlayerData read(UUID uuid, ConfigurationSection config){
 		PlayerData playerData = new PlayerData(uuid,config.getString("name"));
 		playerData.setEventData(readEvents(config.getConfigurationSection("events")));
+		String seeded = config.getString("seeded-to");
+		if(seeded != null){
+			try{
+				playerData.setSeededTo(UUID.fromString(seeded));
+			}catch(IllegalArgumentException notCharacter){
+				// Not a character ID: treat as not seeded.
+			}
+		}
 		ConfigurationSection characters = config.getConfigurationSection("characters");
 		if(characters != null){
 			for(String key : characters.getKeys(false)){
@@ -92,6 +100,7 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 		players.set("name", player.name());
 		players.set("events", null);
 		players.set("characters", null);
+		players.set("seeded-to", player.seededTo() == null ? null : player.seededTo().toString());
 		writeEvents(players, "events", player.account());
 		for(Map.Entry<UUID, List<EventData>> character : player.characters().entrySet()){
 			writeEvents(players, "characters."+character.getKey()+".events", character.getValue());
