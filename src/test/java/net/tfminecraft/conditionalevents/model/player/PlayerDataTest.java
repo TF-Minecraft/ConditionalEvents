@@ -39,6 +39,37 @@ class PlayerDataTest {
 
         data.resetAll();
         assertFalse(data.isEventOneTime(character, "codex_tf"));
-        assertTrue(data.getCharacterEventData().isEmpty());
+        assertTrue(data.snapshot().characters().isEmpty());
+    }
+
+    @Test
+    void aChangeDuringASaveKeepsTheDataModified() {
+        PlayerData data = new PlayerData(UUID.randomUUID(), "Steve");
+        data.setOneTime(character, "research_bronze", true);
+        PlayerData.Snapshot saving = data.snapshot();
+
+        data.setOneTime(character, "research_iron", true);
+        data.markSaved(saving.revision());
+
+        assertTrue(data.isModified());
+        assertFalse(saving.characters().get(character).stream().anyMatch(e -> e.getName().equals("research_iron")));
+        data.markSaved(data.snapshot().revision());
+        assertFalse(data.isModified());
+    }
+
+    @Test
+    void snapshotsAreCopies() {
+        PlayerData data = new PlayerData(UUID.randomUUID(), "Steve");
+        data.setCooldown("global_booster", 900);
+        PlayerData.Snapshot snapshot = data.snapshot();
+
+        data.setCooldown("global_booster", 1000);
+
+        assertEquals(900, snapshot.account().get(0).getCooldown());
+        assertEquals("Steve", snapshot.name());
+        data.setModified(false);
+        assertFalse(data.isModified());
+        data.setModified(true);
+        assertTrue(data.isModified());
     }
 }

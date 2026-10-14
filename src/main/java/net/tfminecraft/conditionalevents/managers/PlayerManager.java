@@ -86,53 +86,56 @@ public class PlayerManager {
         if(event == null || !event.isCharacterScoped()){
             return Scope.ACCOUNT;
         }
-        UUID character = plugin.getCharacterTracker().character(player.getUniqueId()).orElse(null);
+        UUID character = playedCharacter(player);
         return new Scope(character != null, character);
     }
 
-    /** Per-character events only run while a character is in play. */
-    public boolean canRun(CEEvent event, Player player){
-        return !event.isCharacterScoped() || plugin.getCharacterTracker().character(player.getUniqueId()).isPresent();
+    /** The character the player is playing, or null between characters. */
+    public UUID playedCharacter(Player player){
+        return plugin.getCharacterTracker().character(player.getUniqueId()).orElse(null);
     }
 
     public void setEventCooldown(String eventName,Player player){
         Scope scope = scope(eventName,player);
-        if(!scope.available()){
-            return;
+        if(scope.available()){
+            setEventCooldown(eventName,player,scope.character(),System.currentTimeMillis());
         }
-        PlayerData p = getPlayer(player,true);
-        p.setCooldown(scope.character(),eventName,System.currentTimeMillis());
-        p.setModified(true);
+    }
+
+    /** {@code character} null means the account's data. */
+    public void setEventCooldown(String eventName,Player player,UUID character,long millis){
+        getPlayer(player,true).setCooldown(character,eventName,millis);
     }
 
     public long getEventCooldown(String eventName,Player player){
         Scope scope = scope(eventName,player);
+        return scope.available() ? getEventCooldown(eventName,player,scope.character()) : 0;
+    }
+
+    public long getEventCooldown(String eventName,Player player,UUID character){
         PlayerData p = getPlayer(player,false);
-        if(p == null || !scope.available()){
-            return 0;
-        }else{
-            return p.getCooldown(scope.character(),eventName);
-        }
+        return p == null ? 0 : p.getCooldown(character,eventName);
     }
 
     public void setEventOneTime(String eventName,Player player){
         Scope scope = scope(eventName,player);
-        if(!scope.available()){
-            return;
+        if(scope.available()){
+            setEventOneTime(eventName,player,scope.character(),true);
         }
-        PlayerData p = getPlayer(player,true);
-        p.setOneTime(scope.character(),eventName,true);
-        p.setModified(true);
+    }
+
+    public void setEventOneTime(String eventName,Player player,UUID character,boolean oneTime){
+        getPlayer(player,true).setOneTime(character,eventName,oneTime);
     }
 
     public boolean getEventOneTime(String eventName,Player player){
         Scope scope = scope(eventName,player);
+        return scope.available() && getEventOneTime(eventName,player,scope.character());
+    }
+
+    public boolean getEventOneTime(String eventName,Player player,UUID character){
         PlayerData p = getPlayer(player,false);
-        if(p == null || !scope.available()){
-            return false;
-        }else{
-            return p.isEventOneTime(scope.character(),eventName);
-        }
+        return p != null && p.isEventOneTime(character,eventName);
     }
 
     public String resetDataForPlayer(String playerName, String eventName, FileConfiguration messagesConfig){

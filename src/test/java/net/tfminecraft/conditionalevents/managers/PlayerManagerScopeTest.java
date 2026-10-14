@@ -2,6 +2,7 @@ package net.tfminecraft.conditionalevents.managers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -24,8 +25,6 @@ class PlayerManagerScopeTest {
     private CharacterTracker tracker;
     private PlayerManager players;
     private Player player;
-    private CEEvent research;
-    private CEEvent booster;
 
     @BeforeEach
     void setUp() {
@@ -34,11 +33,10 @@ class PlayerManagerScopeTest {
         tracker = mock(CharacterTracker.class);
         when(plugin.getEventsManager()).thenReturn(events);
         when(plugin.getCharacterTracker()).thenReturn(tracker);
-        research = new CEEvent("research_bronze");
+        CEEvent research = new CEEvent("research_bronze");
         research.setCharacterScoped(true);
-        booster = new CEEvent("global_booster");
         when(events.getEvent("research_bronze")).thenReturn(research);
-        when(events.getEvent("global_booster")).thenReturn(booster);
+        when(events.getEvent("global_booster")).thenReturn(new CEEvent("global_booster"));
         players = new PlayerManager(plugin);
         player = mock(Player.class);
         when(player.getUniqueId()).thenReturn(owner);
@@ -47,27 +45,27 @@ class PlayerManagerScopeTest {
     }
 
     @Test
-    void perCharacterEventsWaitForACharacter() {
-        assertFalse(players.canRun(research, player));
-        assertTrue(players.canRun(booster, player));
+    void perCharacterEventsHaveNoDataBetweenCharacters() {
+        assertNull(players.playedCharacter(player));
 
         players.setEventOneTime("research_bronze", player);
         players.setEventCooldown("research_bronze", player);
+
         assertFalse(players.getEventOneTime("research_bronze", player));
         assertEquals(0, players.getEventCooldown("research_bronze", player));
-        assertEquals(null, players.getPlayer(player, false));
+        assertNull(players.getPlayer(player, false));
     }
 
     @Test
     void perCharacterEventsUseThePlayedCharactersData() {
         when(tracker.character(owner)).thenReturn(Optional.of(character));
 
-        assertTrue(players.canRun(research, player));
         players.setEventOneTime("research_bronze", player);
         players.setEventCooldown("research_bronze", player);
         players.setEventOneTime("global_booster", player);
 
         PlayerData data = players.getPlayer(player, false);
+        assertEquals(character, players.playedCharacter(player));
         assertTrue(players.getEventOneTime("research_bronze", player));
         assertTrue(players.getEventCooldown("research_bronze", player) > 0);
         assertTrue(data.isEventOneTime(character, "research_bronze"));
@@ -75,5 +73,18 @@ class PlayerManagerScopeTest {
         assertTrue(data.isEventOneTime("global_booster"));
         assertTrue(players.getEventOneTime("global_booster", player));
         assertEquals(0, players.getEventCooldown("unknown_event", player));
+    }
+
+    @Test
+    void explicitCharacterCallsIgnoreWhoIsPlayingNow() {
+        UUID other = UUID.randomUUID();
+        when(tracker.character(owner)).thenReturn(Optional.of(other));
+
+        players.setEventOneTime("research_bronze", player, character, true);
+        players.setEventCooldown("research_bronze", player, character, 42);
+
+        assertTrue(players.getEventOneTime("research_bronze", player, character));
+        assertEquals(42, players.getEventCooldown("research_bronze", player, character));
+        assertFalse(players.getEventOneTime("research_bronze", player));
     }
 }

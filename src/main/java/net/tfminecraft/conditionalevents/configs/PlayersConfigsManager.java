@@ -69,7 +69,7 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 		if(characters != null){
 			for(String key : characters.getKeys(false)){
 				try{
-					playerData.getCharacterEventData().put(UUID.fromString(key),readEvents(characters.getConfigurationSection(key+".events")));
+					playerData.setCharacterEventData(UUID.fromString(key),readEvents(characters.getConfigurationSection(key+".events")));
 				}catch(IllegalArgumentException notCharacter){
 					// Not a character ID.
 				}
@@ -88,12 +88,12 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 		return eventData;
 	}
 
-	static void write(PlayerData player, ConfigurationSection players){
-		players.set("name", player.getName());
+	static void write(PlayerData.Snapshot player, ConfigurationSection players){
+		players.set("name", player.name());
 		players.set("events", null);
 		players.set("characters", null);
-		writeEvents(players, "events", player.getEventData());
-		for(Map.Entry<UUID, ArrayList<EventData>> character : player.getCharacterEventData().entrySet()){
+		writeEvents(players, "events", player.account());
+		for(Map.Entry<UUID, List<EventData>> character : player.characters().entrySet()){
 			writeEvents(players, "characters."+character.getKey()+".events", character.getValue());
 		}
 	}
@@ -105,10 +105,15 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 		}
 	}
 
+	/** Writes a snapshot; changes made meanwhile keep the data marked modified for the next save. */
 	public void saveConfig(PlayerData player){
-		CommonConfig playerConfig = getConfigFile(player.getUuid().toString()+".yml",true);
-		write(player, playerConfig.getConfig());
-		playerConfig.saveConfig();
+		synchronized(player.saveLock()){
+			PlayerData.Snapshot snapshot = player.snapshot();
+			CommonConfig playerConfig = getConfigFile(player.getUuid().toString()+".yml",true);
+			write(snapshot, playerConfig.getConfig());
+			playerConfig.saveConfig();
+			player.markSaved(snapshot.revision());
+		}
 	}
 
 	@Override
@@ -119,7 +124,6 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 			if(playerData.isModified()){
 				saveConfig(playerData);
 			}
-			playerData.setModified(false);
 		}
 	}
 

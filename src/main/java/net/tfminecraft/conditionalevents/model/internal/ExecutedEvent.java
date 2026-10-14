@@ -3,6 +3,7 @@ package net.tfminecraft.conditionalevents.model.internal;
 import net.tfminecraft.conditionalevents.ConditionalEvents;
 import net.tfminecraft.conditionalevents.api.ConditionalEventsEvent;
 import net.tfminecraft.conditionalevents.managers.DebugManager;
+import net.tfminecraft.conditionalevents.managers.PlayerManager;
 import net.tfminecraft.conditionalevents.managers.EventsManager;
 import net.tfminecraft.conditionalevents.model.CEEvent;
 import net.tfminecraft.conditionalevents.model.StoredVariable;
@@ -19,6 +20,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 // Represent an event that has accomplished all conditions and actions
 // are being executed.
@@ -38,6 +40,12 @@ public class ExecutedEvent {
 
     private boolean onWait;
     private int currentActionPos;
+
+    // Per-character runs: the character they started for and what they set, to undo if it leaves.
+    private UUID character;
+    private boolean markedOneTime;
+    private Long previousCooldown;
+    private boolean abandoned;
 
     public ExecutedEvent(Player player, ArrayList<StoredVariable> eventVariables, CEEvent event, String actionGroupName
         , Event minecraftEvent, LivingEntity target, ConditionalEvents plugin, AdditionalEventStorage additionalEventStorage) {
@@ -131,12 +139,47 @@ public class ExecutedEvent {
         }
     }
 
+    /**
+     * Ties a per-character run to the character it started for. If that character is no longer in
+     * play when an action is due (after a wait, or when an async event hands over to the main
+     * thread), the rest is dropped and the one-time flag and cooldown it set are undone, so the
+     * character can earn it again. {@code character} null leaves the run unbound.
+     */
+    public void bindToCharacter(UUID character, boolean markedOneTime, Long previousCooldown){
+        this.character = character;
+        this.markedOneTime = markedOneTime;
+        this.previousCooldown = previousCooldown;
+    }
+
+    /** Whether the run may carry on; drops it, once, when its character has left. */
+    boolean stillForItsCharacter(){
+        if(abandoned){
+            return false;
+        }
+        if(character == null || character.equals(plugin.getPlayerManager().playedCharacter(player))){
+            return true;
+        }
+        abandoned = true;
+        PlayerManager playerManager = plugin.getPlayerManager();
+        if(markedOneTime){
+            playerManager.setEventOneTime(event.getName(),player,character,false);
+        }
+        if(previousCooldown != null){
+            playerManager.setEventCooldown(event.getName(),player,character,previousCooldown);
+        }
+        plugin.getDebugManager().sendActionsMessage(event.getName(),"abandoned: character left",player);
+        return false;
+    }
+
     public void continueWithActions(){
         this.onWait = false;
         executeActionsFinal();
     }
 
     private void executeActionsFinal(){
+        if(!stillForItsCharacter()){
+            return;
+        }
         DebugManager debugManager = plugin.getDebugManager();
         boolean isDebugActions = plugin.getConfigsManager().getMainConfigManager().isDebugActions();
         VariablesProperties variablesProperties = generateVariableProperties();

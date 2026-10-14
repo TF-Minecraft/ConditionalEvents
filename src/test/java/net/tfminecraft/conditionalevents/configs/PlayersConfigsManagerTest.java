@@ -22,7 +22,7 @@ class PlayersConfigsManagerTest {
         data.setOneTime(character, "research_bronze", true);
         YamlConfiguration yaml = new YamlConfiguration();
 
-        PlayersConfigsManager.write(data, yaml);
+        PlayersConfigsManager.write(data.snapshot(), yaml);
         YamlConfiguration reread = new YamlConfiguration();
         reread.loadFromString(yaml.saveToString());
         PlayerData loaded = PlayersConfigsManager.read(account, reread);
@@ -54,8 +54,8 @@ class PlayersConfigsManagerTest {
         PlayerData loaded = PlayersConfigsManager.read(account, yaml);
 
         assertTrue(loaded.isEventOneTime("codex_die"));
-        assertEquals(1, loaded.getCharacterEventData().size());
-        assertTrue(loaded.getCharacterEventData().get(character).isEmpty());
+        assertEquals(1, loaded.snapshot().characters().size());
+        assertTrue(loaded.snapshot().characters().get(character).isEmpty());
     }
 
     @Test
