@@ -18,6 +18,7 @@ public class PlayerData {
     private String name;
     private boolean modified;
     private long revision;
+    private long resetEpoch;
     private ArrayList<EventData> eventData;
     private final Map<UUID, ArrayList<EventData>> characterEventData = new HashMap<>();
     private final Object saveLock = new Object();
@@ -106,14 +107,40 @@ public class PlayerData {
         modified = true;
     }
 
+    /** Bumped by every staff reset, so an older run never undoes marks made after the reset. */
+    public synchronized long getResetEpoch(){
+        return resetEpoch;
+    }
+
+    /**
+     * Undoes what one abandoned run set, only where it still holds: the one-time flag unless the
+     * event was reset since, and the cooldown only if it is still the start this run wrote.
+     */
+    public synchronized void undoRun(UUID character, String eventName, boolean oneTime, Long previousCooldown,
+            long setCooldown, long epoch){
+        EventData e = find(character, eventName);
+        if(e == null || epoch != resetEpoch){
+            return;
+        }
+        if(oneTime){
+            e.setOneTime(false);
+        }
+        if(previousCooldown != null && e.getCooldown() == setCooldown){
+            e.setCooldown(previousCooldown);
+        }
+        touched();
+    }
+
     /** Resets the event for the account and every character. */
     public synchronized void resetEvent(String eventName){
+        resetEpoch++;
         eventData.removeIf(c -> c.getName().equals(eventName));
         characterEventData.values().forEach(list -> list.removeIf(c -> c.getName().equals(eventName)));
         touched();
     }
 
     public synchronized void resetAll(){
+        resetEpoch++;
         eventData.clear();
         characterEventData.clear();
         touched();

@@ -65,11 +65,13 @@ public class EventsManager {
         // Events keeping per-character data need a character in play, fixed here for the whole run.
         // Without a player there is no data to keep, as upstream.
         UUID character = null;
+        CharacterRun run = null;
         if(player != null && event.usesCharacterData()){
             character = plugin.getPlayerManager().playedCharacter(player);
             if(character == null){
                 return;
             }
+            run = new CharacterRun(character);
         }
 
         //Ignore if cancelled
@@ -105,7 +107,7 @@ public class EventsManager {
                     ExecutedEvent executedEvent = new ExecutedEvent(player, conditionEvent.getEventVariables(), event,
                          "one_time", conditionEvent.getMinecraftEvent(), conditionEvent.getTarget(), plugin,
                             conditionEvent.getAdditionalEventStorage());
-                    executedEvent.bindToCharacter(character,false,null);
+                    executedEvent.bindToCharacter(run);
                     plugin.getDebugManager().sendActionsMessage(event.getName(),"one_time",player);
                     executedEvent.executeActions();
                     return;
@@ -122,7 +124,7 @@ public class EventsManager {
                     ExecutedEvent executedEvent = new ExecutedEvent(player, conditionEvent.getEventVariables(), event,
                           "cooldown", conditionEvent.getMinecraftEvent(), conditionEvent.getTarget(), plugin,
                             conditionEvent.getAdditionalEventStorage());
-                    executedEvent.bindToCharacter(character,false,null);
+                    executedEvent.bindToCharacter(run);
                     plugin.getDebugManager().sendActionsMessage(event.getName(),"cooldown",player);
                     executedEvent.executeActions();
                     return;
@@ -130,8 +132,6 @@ public class EventsManager {
             }
         }
 
-        boolean markedOneTime = false;
-        Long previousCooldown = null;
         if(player != null){
             // Ignore parameters
             String actionGroupWithoutParameters = executeActionGroup;
@@ -144,15 +144,21 @@ public class EventsManager {
             if(event.isOneTime()){
                 if(!event.getPreventOneTimeActivationActionGroups().contains(actionGroupWithoutParameters)){
                     playerManager.setEventOneTime(event.getName(),player,character,true);
-                    markedOneTime = true;
+                    if(run != null){
+                        run.markedOneTime(playerManager.getPlayer(player,true).getResetEpoch());
+                    }
                 }
             }
 
             //Set Cooldown
             if(event.getCooldown() != 0 && !bypassCooldown){
                 if(!event.getPreventCooldownActivationActionGroups().contains(actionGroupWithoutParameters)){
-                    previousCooldown = playerManager.getEventCooldown(event.getName(),player,character);
-                    playerManager.setEventCooldown(event.getName(),player,character,System.currentTimeMillis());
+                    long previous = playerManager.getEventCooldown(event.getName(),player,character);
+                    long now = System.currentTimeMillis();
+                    playerManager.setEventCooldown(event.getName(),player,character,now);
+                    if(run != null){
+                        run.markedCooldown(previous,now,playerManager.getPlayer(player,true).getResetEpoch());
+                    }
                 }
             }
         }
@@ -161,7 +167,7 @@ public class EventsManager {
         ExecutedEvent executedEvent = new ExecutedEvent(player, conditionEvent.getEventVariables(), event,
                 executeActionGroup, conditionEvent.getMinecraftEvent(), conditionEvent.getTarget(), plugin,
                 conditionEvent.getAdditionalEventStorage());
-        executedEvent.bindToCharacter(character,markedOneTime,previousCooldown);
+        executedEvent.bindToCharacter(run);
         executedEvent.executeActions();
     }
 

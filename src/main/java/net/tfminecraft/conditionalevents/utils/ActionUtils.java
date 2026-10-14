@@ -1114,8 +1114,8 @@ public class ActionUtils {
 
         String actionGroup = MathUtils.getRandomKeyByWeight(weights);
 
-        //Clone ExecutedEvent
-        new ExecutedEvent(
+        //Clone ExecutedEvent; it belongs to the same character run, if any
+        ExecutedEvent group = new ExecutedEvent(
                 executedEvent.getPlayer(),
                 executedEvent.getEventVariables(),
                 executedEvent.getEvent(),
@@ -1124,7 +1124,9 @@ public class ActionUtils {
                 executedEvent.getTarget(),
                 plugin,
                 executedEvent.getAdditionalEventStorage()
-        ).executeActions();
+        );
+        group.bindToCharacter(executedEvent.getCharacterRun());
+        group.executeActions();
     }
 
     public static void setEventXp(String actionLine,Event minecraftEvent){

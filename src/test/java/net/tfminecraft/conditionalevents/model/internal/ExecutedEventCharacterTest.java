@@ -2,6 +2,8 @@ package net.tfminecraft.conditionalevents.model.internal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -20,8 +22,10 @@ import net.tfminecraft.conditionalevents.managers.DebugManager;
 import net.tfminecraft.conditionalevents.managers.EventsManager;
 import net.tfminecraft.conditionalevents.managers.PlayerManager;
 import net.tfminecraft.conditionalevents.model.CEEvent;
+import net.tfminecraft.conditionalevents.model.player.PlayerData;
 
 class ExecutedEventCharacterTest {
+    private static final String EVENT = "codex_poi100";
     private final UUID owner = UUID.randomUUID();
     private final UUID aldric = UUID.randomUUID();
     private final UUID mira = UUID.randomUUID();
@@ -43,55 +47,102 @@ class ExecutedEventCharacterTest {
         player = mock(Player.class);
         when(player.getUniqueId()).thenReturn(owner);
         when(player.getName()).thenReturn("Steve");
-        poi100 = new CEEvent("codex_poi100");
-        poi100.setCharacterScoped(true);
+        poi100 = new CEEvent(EVENT);
+        poi100.setOneTime(true);
+        when(tracker.character(owner)).thenReturn(Optional.of(aldric));
     }
 
     @Test
     void aRunCarriesOnWhileItsCharacterPlays() {
-        when(tracker.character(owner)).thenReturn(Optional.of(aldric));
-        ExecutedEvent run = run();
-        run.bindToCharacter(aldric, true, null);
+        ExecutedEvent run = run(new CharacterRun(aldric));
 
         assertTrue(run.stillForItsCharacter());
     }
 
     @Test
-    void switchingDuringAWaitDropsTheRunAndUndoesItsMarks() {
-        players.setEventOneTime("codex_poi100", player, aldric, true);
-        players.setEventCooldown("codex_poi100", player, aldric, 500);
-        ExecutedEvent run = run();
-        run.bindToCharacter(aldric, true, 100L);
+    void switchingDuringAWaitDropsTheRunAndItsGroupsAndUndoesItsMarksOnce() {
+        CharacterRun record = admit(100L, 500L);
+        ExecutedEvent parent = run(record);
+        ExecutedEvent group = run(parent.getCharacterRun());
         when(tracker.character(owner)).thenReturn(Optional.of(mira));
 
-        assertFalse(run.stillForItsCharacter());
-        assertFalse(run.stillForItsCharacter());
+        assertFalse(group.stillForItsCharacter());
+        assertFalse(parent.stillForItsCharacter());
 
-        assertFalse(players.getEventOneTime("codex_poi100", player, aldric));
-        assertEquals(100, players.getEventCooldown("codex_poi100", player, aldric));
-        assertFalse(players.getEventOneTime("codex_poi100", player, mira));
+        assertFalse(players.getEventOneTime(EVENT, player, aldric));
+        assertEquals(100, players.getEventCooldown(EVENT, player, aldric));
+        assertFalse(players.getEventOneTime(EVENT, player, mira));
+        assertSame(record, group.getCharacterRun());
     }
 
     @Test
-    void anAbandonedRunWithNothingToUndoLeavesDataAlone() {
-        players.setEventOneTime("codex_poi100", player, aldric, true);
-        ExecutedEvent run = run();
-        run.bindToCharacter(aldric, false, null);
+    void anOldRunLeavesANewerCooldownAlone() {
+        CharacterRun first = admit(0L, 1000L);
+        players.setEventCooldown(EVENT, player, aldric, 2000);
+        when(tracker.character(owner)).thenReturn(Optional.of(mira));
+
+        assertFalse(run(first).stillForItsCharacter());
+
+        assertEquals(2000, players.getEventCooldown(EVENT, player, aldric));
+        assertFalse(players.getEventOneTime(EVENT, player, aldric));
+    }
+
+    @Test
+    void anOldRunLeavesFlagsEarnedAfterAStaffResetAlone() {
+        CharacterRun first = admit(null, null);
+        players.getPlayer(player, false).resetEvent(EVENT);
+        players.setEventOneTime(EVENT, player, aldric, true);
+        when(tracker.character(owner)).thenReturn(Optional.of(mira));
+
+        assertFalse(run(first).stillForItsCharacter());
+
+        assertTrue(players.getEventOneTime(EVENT, player, aldric));
+    }
+
+    @Test
+    void unloadedDataIsNotRecreatedByAnUndo() {
+        CharacterRun record = admit(null, null);
+        players.removePlayer(players.getPlayer(player, false));
         when(tracker.character(owner)).thenReturn(Optional.empty());
 
-        assertFalse(run.stillForItsCharacter());
-        assertTrue(players.getEventOneTime("codex_poi100", player, aldric));
+        assertFalse(run(record).stillForItsCharacter());
+
+        assertNull(players.getPlayer(player, false));
+    }
+
+    @Test
+    void aRunThatMarkedNothingUndoesNothing() {
+        players.setEventOneTime(EVENT, player, aldric, true);
+        when(tracker.character(owner)).thenReturn(Optional.of(mira));
+
+        assertFalse(run(new CharacterRun(aldric)).stillForItsCharacter());
+
+        assertTrue(players.getEventOneTime(EVENT, player, aldric));
     }
 
     @Test
     void accountRunsAreNeverDropped() {
-        ExecutedEvent run = run();
-        run.bindToCharacter(null, true, null);
+        when(tracker.character(owner)).thenReturn(Optional.empty());
 
-        assertTrue(run.stillForItsCharacter());
+        assertTrue(run(null).stillForItsCharacter());
     }
 
-    private ExecutedEvent run() {
-        return new ExecutedEvent(player, new ArrayList<>(), poi100, "default", null, null, plugin, null);
+    /** Marks as EventsManager does on admission: one-time always, the cooldown when given. */
+    private CharacterRun admit(Long previousCooldown, Long setCooldown) {
+        CharacterRun record = new CharacterRun(aldric);
+        players.setEventOneTime(EVENT, player, aldric, true);
+        PlayerData data = players.getPlayer(player, false);
+        record.markedOneTime(data.getResetEpoch());
+        if (setCooldown != null) {
+            players.setEventCooldown(EVENT, player, aldric, setCooldown);
+            record.markedCooldown(previousCooldown, setCooldown, data.getResetEpoch());
+        }
+        return record;
+    }
+
+    private ExecutedEvent run(CharacterRun record) {
+        ExecutedEvent run = new ExecutedEvent(player, new ArrayList<>(), poi100, "default", null, null, plugin, null);
+        run.bindToCharacter(record);
+        return run;
     }
 }
