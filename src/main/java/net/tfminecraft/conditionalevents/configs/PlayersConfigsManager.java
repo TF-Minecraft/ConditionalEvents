@@ -8,10 +8,16 @@ import net.tfminecraft.conditionalevents.model.player.PlayerData;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Level;
 
 public class PlayersConfigsManager extends DataFolderConfigManager{
 	
@@ -115,14 +121,33 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 	}
 
 	/** Writes a snapshot; changes made meanwhile keep the data marked modified for the next save. */
-	public void saveConfig(PlayerData player){
+	/**
+	 * Writes a snapshot through a temporary file. The data is marked clean only when the write
+	 * succeeded and nothing changed meanwhile; a failure is logged and the data stays modified,
+	 * so the next save tries again.
+	 * @return whether the file was written
+	 */
+	public boolean saveConfig(PlayerData player){
 		synchronized(player.saveLock()){
 			PlayerData.Snapshot snapshot = player.snapshot();
 			CommonConfig playerConfig = getConfigFile(player.getUuid().toString()+".yml",true);
 			write(snapshot, playerConfig.getConfig());
-			playerConfig.saveConfig();
+			Path file = plugin.getDataFolder().toPath().resolve(folderName).resolve(player.getUuid()+".yml");
+			try{
+				writeAtomically(file, playerConfig.getConfig().saveToString());
+			}catch(IOException e){
+				plugin.getLogger().log(Level.SEVERE, "Could not save ConditionalEvents data of "+player.getUuid()+"; retrying with the next save", e);
+				return false;
+			}
 			player.markSaved(snapshot.revision());
+			return true;
 		}
+	}
+
+	static void writeAtomically(Path file, String text) throws IOException{
+		Path temporary = file.resolveSibling(file.getFileName()+".tmp");
+		Files.writeString(temporary, text, StandardCharsets.UTF_8);
+		Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 	}
 
 	@Override

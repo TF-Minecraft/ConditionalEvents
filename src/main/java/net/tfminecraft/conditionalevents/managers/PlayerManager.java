@@ -8,6 +8,7 @@ import net.tfminecraft.conditionalevents.model.internal.ConditionEvent;
 import net.tfminecraft.conditionalevents.model.player.GenericCallback;
 import net.tfminecraft.conditionalevents.model.player.PlayerData;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -193,14 +194,9 @@ public class PlayerManager {
         UUID uuid = event.getUniqueId();
         String playerName = event.getName();
 
-        // Load player data from file if exists
-        PlayerData playerData = null;
-        boolean alreadyOnMemory = false;
-        if(plugin.getConfigsManager().getMainConfigManager().isRetainPlayerDataUntilRestart()){
-            // Try to get retained data
-            playerData = getPlayerByUUID(uuid);
-            alreadyOnMemory = playerData != null;
-        }
+        // Data still in memory is newer than the file: retained, or not yet saved since a quit.
+        PlayerData playerData = getPlayerByUUID(uuid);
+        boolean alreadyOnMemory = playerData != null;
         if(playerData == null){
             // Try to get file data
             playerData = plugin.getConfigsManager().getPlayerConfigsManager().loadConfig(uuid);
@@ -221,20 +217,30 @@ public class PlayerManager {
         new ConditionEvent(plugin, player, event, EventType.PLAYER_LEAVE, null)
                 .checkEvent();
 
-        // Save player data into file and remove from map
+        // Save player data into file and, unless retained, drop it from memory once it is saved.
+        // Data whose save failed stays in memory and is retried by the periodic save.
         PlayerData playerData = getPlayer(player,false);
         if(playerData != null){
+            boolean retain = plugin.getConfigsManager().getMainConfigManager().isRetainPlayerDataUntilRestart();
             if(playerData.isModified()){
+                UUID uuid = player.getUniqueId();
                 new BukkitRunnable(){
                     @Override
                     public void run() {
-                        plugin.getConfigsManager().getPlayerConfigsManager().saveConfig(playerData);
+                        boolean saved = plugin.getConfigsManager().getPlayerConfigsManager().saveConfig(playerData);
+                        if(saved && !retain){
+                            new BukkitRunnable(){
+                                @Override
+                                public void run() {
+                                    if(Bukkit.getPlayer(uuid) == null && !playerData.isModified()){
+                                        removePlayer(playerData);
+                                    }
+                                }
+                            }.runTask(plugin);
+                        }
                     }
                 }.runTaskAsynchronously(plugin);
-            }
-
-            // Retain player data if enabled
-            if(!plugin.getConfigsManager().getMainConfigManager().isRetainPlayerDataUntilRestart()){
+            }else if(!retain){
                 removePlayer(playerData);
             }
         }

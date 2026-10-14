@@ -97,4 +97,29 @@ class PlayersConfigsManagerTest {
 
         assertFalse(PlayersConfigsManager.reset(yaml, "all"));
     }
+
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path dataFolder;
+
+    @Test
+    void aFailedSaveKeepsTheDataModifiedAndASuccessfulOneIsAtomic() throws Exception {
+        net.tfminecraft.conditionalevents.ConditionalEvents plugin = org.mockito.Mockito.mock(net.tfminecraft.conditionalevents.ConditionalEvents.class);
+        org.mockito.Mockito.when(plugin.getDataFolder()).thenReturn(dataFolder.toFile());
+        org.mockito.Mockito.when(plugin.getLogger()).thenReturn(java.util.logging.Logger.getAnonymousLogger());
+        PlayersConfigsManager manager = new PlayersConfigsManager(plugin, "players");
+        java.nio.file.Files.createDirectories(dataFolder.resolve("players"));
+        PlayerData data = new PlayerData(account, "Steve");
+        data.seed(character, name -> false);
+        java.nio.file.Path blocker = dataFolder.resolve("players").resolve(account + ".yml.tmp");
+        java.nio.file.Files.createDirectories(blocker);
+
+        assertFalse(manager.saveConfig(data));
+        assertTrue(data.isModified());
+
+        java.nio.file.Files.delete(blocker);
+        assertTrue(manager.saveConfig(data));
+        assertFalse(data.isModified());
+        YamlConfiguration saved = YamlConfiguration.loadConfiguration(dataFolder.resolve("players").resolve(account + ".yml").toFile());
+        assertEquals(character.toString(), saved.getString("seeded-to"));
+    }
 }

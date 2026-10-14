@@ -1,10 +1,12 @@
 package net.tfminecraft.conditionalevents.character;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.bukkit.Bukkit;
@@ -30,11 +32,14 @@ public final class CharacterTracker implements Listener {
     private final Map<UUID, UUID> current = new ConcurrentHashMap<>();
     private final PlayerManager players;
     private final Predicate<String> perCharacter;
+    private final LegacyRecipient recipients;
     private final Logger logger;
 
-    public CharacterTracker(PlayerManager players, Predicate<String> perCharacter, Logger logger) {
+    public CharacterTracker(PlayerManager players, Predicate<String> perCharacter, LegacyRecipient recipients,
+            Logger logger) {
         this.players = players;
         this.perCharacter = perCharacter;
+        this.recipients = recipients;
         this.logger = logger;
     }
 
@@ -71,17 +76,28 @@ public final class CharacterTracker implements Listener {
         current.put(ref.ownerId(), ref.characterId());
     }
 
-    /** Once per account, main thread only. Waits for a later session if the roster is unknown. */
+    /**
+     * Once per account, main thread only, to the character pinned for the account (see
+     * {@link LegacyRecipient}). Waits for a later session if no character can be chosen yet.
+     */
     void seed(UUID owner) {
         PlayerData data = players.getPlayerByUUID(owner);
         if (data == null || data.getSeededTo() != null) {
             return;
         }
-        MostPlayed.of(Characters.characters(owner)).ifPresent(heir -> {
-            int moved = data.seed(heir, perCharacter);
+        Optional<UUID> heir;
+        try {
+            heir = recipients.of(owner, () -> MostPlayed.of(Characters.characters(owner)));
+        } catch (IOException | RuntimeException ex) {
+            logger.log(Level.SEVERE, "Could not pin the most-played character of account " + owner
+                    + "; trying again at its next session", ex);
+            return;
+        }
+        heir.ifPresent(character -> {
+            int moved = data.seed(character, perCharacter);
             if (moved > 0) {
                 logger.info("Gave " + moved + " old per-character event records of account " + owner
-                        + " to its most-played character " + heir);
+                        + " to its most-played character " + character);
             }
         });
     }

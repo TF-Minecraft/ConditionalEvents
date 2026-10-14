@@ -1,6 +1,7 @@
 package net.tfminecraft.conditionalevents;
 
 import net.tfminecraft.conditionalevents.character.CharacterTracker;
+import net.tfminecraft.conditionalevents.character.LegacyRecipient;
 import net.tfminecraft.conditionalevents.model.CEEvent;
 import net.tfminecraft.conditionalevents.api.ConditionalEventsAPI;
 import net.tfminecraft.conditionalevents.api.ExpansionCE;
@@ -67,7 +68,7 @@ public class ConditionalEvents extends JavaPlugin {
 		this.characterTracker = new CharacterTracker(playerManager, name -> {
 			CEEvent event = eventsManager.getEvent(name);
 			return event != null && event.usesCharacterData();
-		}, getLogger());
+		}, new LegacyRecipient(getDataFolder().getParentFile().toPath()), getLogger());
 
 		registerEvents();
 		registerCommands();

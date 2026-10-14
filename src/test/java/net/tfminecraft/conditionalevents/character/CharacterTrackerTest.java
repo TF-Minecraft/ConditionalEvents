@@ -1,5 +1,8 @@
 package net.tfminecraft.conditionalevents.character;
 
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.Path;
+import java.nio.file.Files;
 import net.tfminecraft.tlibs.character.CharacterStatus;
 import net.tfminecraft.tlibs.character.CharacterInfo;
 import net.tfminecraft.conditionalevents.model.player.PlayerData;
@@ -37,6 +40,9 @@ import net.tfminecraft.tlibs.character.CharacterSessionStartEvent;
 import net.tfminecraft.tlibs.character.Characters;
 
 class CharacterTrackerTest {
+    @TempDir
+    Path plugins;
+
     private final UUID owner = UUID.randomUUID();
     private final UUID other = UUID.randomUUID();
     private final UUID alt = UUID.randomUUID();
@@ -66,7 +72,7 @@ class CharacterTrackerTest {
             public void close() {
             }
         });
-        tracker = new CharacterTracker(players, Set.of("research_bronze")::contains, logger);
+        tracker = new CharacterTracker(players, Set.of("research_bronze")::contains, new LegacyRecipient(plugins), logger);
         player = mock(Player.class);
         when(player.getUniqueId()).thenReturn(owner);
     }
@@ -120,6 +126,35 @@ class CharacterTrackerTest {
         data.setOneTime("research_bronze", true);
         tracker.onStart(start(alt));
         assertTrue(data.isEventOneTime("research_bronze"));
+    }
+
+    @Test
+    void thePinnedCharacterWinsOverTodaysMostPlayed() throws Exception {
+        UUID pinned = UUID.randomUUID();
+        Files.createDirectories(plugins.resolve("TLibs/legacy-recipients"));
+        Files.writeString(plugins.resolve("TLibs/legacy-recipients/" + owner + ".txt"), pinned.toString());
+        PlayerData data = new PlayerData(owner, "Steve");
+        data.setOneTime("research_bronze", true);
+        players.addPlayer(data);
+        characters.when(() -> Characters.characters(owner)).thenReturn(Optional.of(List.of(played(alt, 9000))));
+
+        tracker.onStart(start(alt));
+
+        assertTrue(data.isEventOneTime(pinned, "research_bronze"));
+        assertFalse(data.isEventOneTime(alt, "research_bronze"));
+    }
+
+    @Test
+    void aPinThatCannotBeWrittenWaitsForTheNextSession() throws Exception {
+        Files.writeString(plugins.resolve("TLibs"), "not a folder");
+        PlayerData data = new PlayerData(owner, "Steve");
+        players.addPlayer(data);
+        characters.when(() -> Characters.characters(owner)).thenReturn(Optional.of(List.of(played(alt, 5))));
+
+        tracker.onStart(start(alt));
+
+        assertNull(data.getSeededTo());
+        assertTrue(logs.stream().anyMatch(r -> r.getMessage().contains("Could not pin the most-played character")));
     }
 
     @Test
