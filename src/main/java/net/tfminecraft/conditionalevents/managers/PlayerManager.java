@@ -8,7 +8,6 @@ import net.tfminecraft.conditionalevents.model.internal.ConditionEvent;
 import net.tfminecraft.conditionalevents.model.player.GenericCallback;
 import net.tfminecraft.conditionalevents.model.player.PlayerData;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -169,11 +168,11 @@ public class PlayerManager {
                     public void run() {
                         String result;
                         if(eventName.equals("all")) {
-                            // All data, retained:
+                            // All data, in memory:
                             players.values().forEach(PlayerData::resetAll);
                             result = messagesConfig.getString("Messages.eventDataResetAllForAllPlayers");
                         }else {
-                            // Specific event, retained:
+                            // Specific event, in memory:
                             players.values().forEach(p -> p.resetEvent(eventName));
                             result = messagesConfig.getString("Messages.eventDataResetForAllPlayers")
                                     .replace("%event%", eventName);
@@ -194,17 +193,20 @@ public class PlayerManager {
         UUID uuid = event.getUniqueId();
         String playerName = event.getName();
 
-        // Data still in memory is newer than the file: retained, or not yet saved since a quit.
-        PlayerData playerData = getPlayerByUUID(uuid);
-        boolean alreadyOnMemory = playerData != null;
-        if(playerData == null){
-            // Try to get file data
-            playerData = plugin.getConfigsManager().getPlayerConfigsManager().loadConfig(uuid);
+        // Data in memory is newer than the file. Loading holds the files lock, so a staff reset of
+        // offline files cannot interleave with an account being loaded.
+        PlayersConfigsManager files = plugin.getConfigsManager().getPlayerConfigsManager();
+        PlayerData playerData;
+        synchronized(files.filesLock()){
+            playerData = getPlayerByUUID(uuid);
+            if(playerData == null){
+                playerData = files.loadConfig(uuid);
+                if(playerData != null){
+                    addPlayer(playerData);
+                }
+            }
         }
         if(playerData != null){
-            if(!alreadyOnMemory){
-                addPlayer(playerData);
-            }
             if(playerData.getName() == null || !playerData.getName().equals(playerName)){
                 updatePlayerName(playerData.getName(),playerName,uuid);
                 playerData.setName(playerName);
@@ -217,32 +219,16 @@ public class PlayerManager {
         new ConditionEvent(plugin, player, event, EventType.PLAYER_LEAVE, null)
                 .checkEvent();
 
-        // Save player data into file and, unless retained, drop it from memory once it is saved.
-        // Data whose save failed stays in memory and is retried by the periodic save.
+        // Save player data into file. It stays in memory until restart, so a rejoin always finds the
+        // newest data and a failed save is retried by the periodic save.
         PlayerData playerData = getPlayer(player,false);
-        if(playerData != null){
-            boolean retain = plugin.getConfigsManager().getMainConfigManager().isRetainPlayerDataUntilRestart();
-            if(playerData.isModified()){
-                UUID uuid = player.getUniqueId();
-                new BukkitRunnable(){
-                    @Override
-                    public void run() {
-                        boolean saved = plugin.getConfigsManager().getPlayerConfigsManager().saveConfig(playerData);
-                        if(saved && !retain){
-                            new BukkitRunnable(){
-                                @Override
-                                public void run() {
-                                    if(Bukkit.getPlayer(uuid) == null && !playerData.isModified()){
-                                        removePlayer(playerData);
-                                    }
-                                }
-                            }.runTask(plugin);
-                        }
-                    }
-                }.runTaskAsynchronously(plugin);
-            }else if(!retain){
-                removePlayer(playerData);
-            }
+        if(playerData != null && playerData.isModified()){
+            new BukkitRunnable(){
+                @Override
+                public void run() {
+                    plugin.getConfigsManager().getPlayerConfigsManager().saveConfig(playerData);
+                }
+            }.runTaskAsynchronously(plugin);
         }
     }
 }

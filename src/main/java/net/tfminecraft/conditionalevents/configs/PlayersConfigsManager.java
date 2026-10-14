@@ -6,8 +6,10 @@ import net.tfminecraft.conditionalevents.model.player.EventData;
 import net.tfminecraft.conditionalevents.model.player.GenericCallback;
 import net.tfminecraft.conditionalevents.model.player.PlayerData;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -161,11 +163,42 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 		}
 	}
 
+	private final Object filesLock = new Object();
+
+	/** Held while loading an account into memory and while resetting the files of accounts not in memory. */
+	public Object filesLock(){
+		return filesLock;
+	}
+
+	/**
+	 * Resets the files of accounts not in memory, atomically. Accounts in memory are skipped here:
+	 * they are reset in memory and saved as usual, so a reset never writes over a newer save.
+	 */
 	public void resetDataForAllPlayers(String eventName){
-		ArrayList<CommonConfig> configs = getConfigs();
-		for(CommonConfig commonConfig : configs) {
-			if(reset(commonConfig.getConfig(), eventName)){
-				commonConfig.saveConfig();
+		Path folder = plugin.getDataFolder().toPath().resolve(folderName);
+		synchronized(filesLock){
+			File[] files = folder.toFile().listFiles((dir, name) -> name.endsWith(".yml"));
+			if(files == null){
+				return;
+			}
+			for(File file : files){
+				UUID uuid;
+				try{
+					uuid = UUID.fromString(file.getName().substring(0, file.getName().length()-4));
+				}catch(IllegalArgumentException notAccount){
+					continue;
+				}
+				if(plugin.getPlayerManager().getPlayerByUUID(uuid) != null){
+					continue;
+				}
+				YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+				if(reset(yaml, eventName)){
+					try{
+						writeAtomically(file.toPath(), yaml.saveToString());
+					}catch(IOException e){
+						plugin.getLogger().log(Level.SEVERE, "Could not reset ConditionalEvents data of "+uuid, e);
+					}
+				}
 			}
 		}
 	}
