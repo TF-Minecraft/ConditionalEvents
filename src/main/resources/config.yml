@@ -1,5 +1,4 @@
 Config:
-  update_notification: true
   data_save_time: 5
   retain_player_data_until_restart: true
   debug_actions: true

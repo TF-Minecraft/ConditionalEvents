@@ -1,7 +1,7 @@
-main: ce.ajneb97.ConditionalEvents
+main: net.tfminecraft.conditionalevents.ConditionalEvents
 version: ${project.version}
 name: ConditionalEvents
-api-version: 1.13
+api-version: '1.21.10'
 softdepend: [PlaceholderAPI,Citizens,WorldGuardEvents,WorldGuard,ProtocolLib,DiscordSRV,ItemsAdder,PacketEvents]
 author: Ajneb97
 
