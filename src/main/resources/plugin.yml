@@ -3,7 +3,7 @@ version: ${project.version}
 name: ConditionalEvents
 api-version: '1.21.10'
 depend: [TLibs]
-softdepend: [RPCharacters,PlaceholderAPI,Citizens,WorldGuardEvents,WorldGuard,ProtocolLib,DiscordSRV,ItemsAdder,PacketEvents]
+softdepend: [PlaceholderAPI,Citizens,WorldGuardEvents,WorldGuard,ProtocolLib,DiscordSRV,ItemsAdder,PacketEvents]
 author: Ajneb97
 
 commands:
