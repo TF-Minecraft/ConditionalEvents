@@ -145,7 +145,7 @@ public class EventsManager {
                 if(!event.getPreventOneTimeActivationActionGroups().contains(actionGroupWithoutParameters)){
                     playerManager.setEventOneTime(event.getName(),player,character,true);
                     if(run != null){
-                        run.markedOneTime(playerManager.getPlayer(player,true).getResetEpoch());
+                        run.markedOneTime(playerManager.getPlayer(player,true).getResetEpoch(event.getName()));
                     }
                 }
             }
@@ -157,7 +157,7 @@ public class EventsManager {
                     long now = System.currentTimeMillis();
                     playerManager.setEventCooldown(event.getName(),player,character,now);
                     if(run != null){
-                        run.markedCooldown(previous,now,playerManager.getPlayer(player,true).getResetEpoch());
+                        run.markedCooldown(previous,now,playerManager.getPlayer(player,true).getResetEpoch(event.getName()));
                     }
                 }
             }

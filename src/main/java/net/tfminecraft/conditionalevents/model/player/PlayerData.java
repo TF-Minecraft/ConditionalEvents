@@ -18,7 +18,8 @@ public class PlayerData {
     private String name;
     private boolean modified;
     private long revision;
-    private long resetEpoch;
+    private long resetAllCount;
+    private final Map<String, Long> resetCounts = new HashMap<>();
     private ArrayList<EventData> eventData;
     private final Map<UUID, ArrayList<EventData>> characterEventData = new HashMap<>();
     private final Object saveLock = new Object();
@@ -107,9 +108,12 @@ public class PlayerData {
         modified = true;
     }
 
-    /** Bumped by every staff reset, so an older run never undoes marks made after the reset. */
-    public synchronized long getResetEpoch(){
-        return resetEpoch;
+    /**
+     * Changes whenever staff reset this event or all events, so an older run never undoes marks
+     * made after such a reset. Resets of other events leave it alone.
+     */
+    public synchronized long getResetEpoch(String eventName){
+        return resetAllCount + resetCounts.getOrDefault(eventName, 0L);
     }
 
     /**
@@ -119,7 +123,7 @@ public class PlayerData {
     public synchronized void undoRun(UUID character, String eventName, boolean oneTime, Long previousCooldown,
             long setCooldown, long epoch){
         EventData e = find(character, eventName);
-        if(e == null || epoch != resetEpoch){
+        if(e == null || epoch != getResetEpoch(eventName)){
             return;
         }
         if(oneTime){
@@ -133,14 +137,14 @@ public class PlayerData {
 
     /** Resets the event for the account and every character. */
     public synchronized void resetEvent(String eventName){
-        resetEpoch++;
+        resetCounts.merge(eventName, 1L, Long::sum);
         eventData.removeIf(c -> c.getName().equals(eventName));
         characterEventData.values().forEach(list -> list.removeIf(c -> c.getName().equals(eventName)));
         touched();
     }
 
     public synchronized void resetAll(){
-        resetEpoch++;
+        resetAllCount++;
         eventData.clear();
         characterEventData.clear();
         touched();

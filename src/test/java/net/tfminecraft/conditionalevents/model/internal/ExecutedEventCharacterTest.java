@@ -100,6 +100,29 @@ class ExecutedEventCharacterTest {
     }
 
     @Test
+    void resettingAnotherEventStillLetsTheRunUndo() {
+        CharacterRun first = admit(null, null);
+        players.getPlayer(player, false).resetEvent("codex_afk");
+        when(tracker.character(owner)).thenReturn(Optional.of(mira));
+
+        assertFalse(run(first).stillForItsCharacter());
+
+        assertFalse(players.getEventOneTime(EVENT, player, aldric));
+    }
+
+    @Test
+    void resettingEverythingStopsTheUndo() {
+        CharacterRun first = admit(null, null);
+        players.getPlayer(player, false).resetAll();
+        players.setEventOneTime(EVENT, player, aldric, true);
+        when(tracker.character(owner)).thenReturn(Optional.of(mira));
+
+        assertFalse(run(first).stillForItsCharacter());
+
+        assertTrue(players.getEventOneTime(EVENT, player, aldric));
+    }
+
+    @Test
     void unloadedDataIsNotRecreatedByAnUndo() {
         CharacterRun record = admit(null, null);
         players.removePlayer(players.getPlayer(player, false));
@@ -132,10 +155,10 @@ class ExecutedEventCharacterTest {
         CharacterRun record = new CharacterRun(aldric);
         players.setEventOneTime(EVENT, player, aldric, true);
         PlayerData data = players.getPlayer(player, false);
-        record.markedOneTime(data.getResetEpoch());
+        record.markedOneTime(data.getResetEpoch(EVENT));
         if (setCooldown != null) {
             players.setEventCooldown(EVENT, player, aldric, setCooldown);
-            record.markedCooldown(previousCooldown, setCooldown, data.getResetEpoch());
+            record.markedCooldown(previousCooldown, setCooldown, data.getResetEpoch(EVENT));
         }
         return record;
     }
