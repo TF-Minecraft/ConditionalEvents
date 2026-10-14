@@ -1,5 +1,20 @@
 package net.tfminecraft.conditionalevents.character;
 
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.Path;
+import java.nio.file.Files;
+import net.tfminecraft.tlibs.character.CharacterStatus;
+import net.tfminecraft.tlibs.character.CharacterInfo;
+import net.tfminecraft.conditionalevents.model.player.PlayerData;
+import net.tfminecraft.conditionalevents.managers.PlayerManager;
+import net.tfminecraft.conditionalevents.ConditionalEvents;
+import java.util.logging.Logger;
+import java.util.logging.LogRecord;
+import java.util.logging.Handler;
+import java.util.Set;
+import java.util.ArrayList;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -25,17 +40,39 @@ import net.tfminecraft.tlibs.character.CharacterSessionStartEvent;
 import net.tfminecraft.tlibs.character.Characters;
 
 class CharacterTrackerTest {
+    @TempDir
+    Path plugins;
+
     private final UUID owner = UUID.randomUUID();
     private final UUID other = UUID.randomUUID();
     private final UUID alt = UUID.randomUUID();
     private MockedStatic<Characters> characters;
+    private final List<LogRecord> logs = new ArrayList<>();
+    private PlayerManager players;
     private CharacterTracker tracker;
     private Player player;
 
     @BeforeEach
     void setUp() {
         characters = mockStatic(Characters.class);
-        tracker = new CharacterTracker();
+        players = new PlayerManager(mock(ConditionalEvents.class));
+        Logger logger = Logger.getAnonymousLogger();
+        logger.setUseParentHandlers(false);
+        logger.addHandler(new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                logs.add(record);
+            }
+
+            @Override
+            public void flush() {
+            }
+
+            @Override
+            public void close() {
+            }
+        });
+        tracker = new CharacterTracker(players, Set.of("research_bronze")::contains, new LegacyRecipient(plugins), logger);
         player = mock(Player.class);
         when(player.getUniqueId()).thenReturn(owner);
     }
@@ -66,6 +103,78 @@ class CharacterTrackerTest {
         tracker.onQuit(new PlayerQuitEvent(player, "bye"));
 
         assertTrue(tracker.character(owner).isEmpty());
+    }
+
+    @Test
+    void theMostPlayedCharacterGetsTheOldPerCharacterDataOnce() {
+        PlayerData data = new PlayerData(owner, "Steve");
+        data.setOneTime("research_bronze", true);
+        data.setCooldown("global_booster", 900);
+        players.addPlayer(data);
+        characters.when(() -> Characters.characters(owner)).thenReturn(Optional.of(List.of(
+                played(other, 9000), played(alt, 100))));
+
+        tracker.onStart(start(alt));
+
+        assertTrue(data.isEventOneTime(other, "research_bronze"));
+        assertFalse(data.isEventOneTime(alt, "research_bronze"));
+        assertFalse(data.isEventOneTime("research_bronze"));
+        assertEquals(900, data.getCooldown("global_booster"));
+        assertEquals(other, data.getSeededTo());
+        assertTrue(logs.stream().anyMatch(r -> r.getMessage().contains("Gave 1 old per-character event records")));
+
+        data.setOneTime("research_bronze", true);
+        tracker.onStart(start(alt));
+        assertTrue(data.isEventOneTime("research_bronze"));
+    }
+
+    @Test
+    void thePinnedCharacterWinsOverTodaysMostPlayed() throws Exception {
+        UUID pinned = UUID.randomUUID();
+        Files.createDirectories(plugins.resolve("TLibs/legacy-recipients"));
+        Files.writeString(plugins.resolve("TLibs/legacy-recipients/" + owner + ".txt"), pinned.toString());
+        PlayerData data = new PlayerData(owner, "Steve");
+        data.setOneTime("research_bronze", true);
+        players.addPlayer(data);
+        characters.when(() -> Characters.characters(owner)).thenReturn(Optional.of(List.of(played(alt, 9000))));
+
+        tracker.onStart(start(alt));
+
+        assertTrue(data.isEventOneTime(pinned, "research_bronze"));
+        assertFalse(data.isEventOneTime(alt, "research_bronze"));
+    }
+
+    @Test
+    void aPinThatCannotBeWrittenWaitsForTheNextSession() throws Exception {
+        Files.writeString(plugins.resolve("TLibs"), "not a folder");
+        PlayerData data = new PlayerData(owner, "Steve");
+        players.addPlayer(data);
+        characters.when(() -> Characters.characters(owner)).thenReturn(Optional.of(List.of(played(alt, 5))));
+
+        tracker.onStart(start(alt));
+
+        assertNull(data.getSeededTo());
+        assertTrue(logs.stream().anyMatch(r -> r.getMessage().contains("Could not pin the most-played character")));
+    }
+
+    @Test
+    void noSeedWithoutDataOrRosterAndNothingToMoveIsQuiet() {
+        tracker.onStart(start(alt));
+
+        PlayerData data = new PlayerData(owner, "Steve");
+        players.addPlayer(data);
+        characters.when(() -> Characters.characters(owner)).thenReturn(Optional.empty());
+        tracker.onStart(start(alt));
+        assertNull(data.getSeededTo());
+
+        characters.when(() -> Characters.characters(owner)).thenReturn(Optional.of(List.of(played(alt, 5))));
+        tracker.onStart(start(alt));
+        assertEquals(alt, data.getSeededTo());
+        assertTrue(logs.isEmpty());
+    }
+
+    private CharacterInfo played(UUID character, long seconds) {
+        return new CharacterInfo(new CharacterRef(owner, character), "Name", CharacterStatus.ALIVE, null, Set.of(), seconds, null);
     }
 
     @Test

@@ -168,11 +168,11 @@ public class PlayerManager {
                     public void run() {
                         String result;
                         if(eventName.equals("all")) {
-                            // All data, retained:
+                            // All data, in memory:
                             players.values().forEach(PlayerData::resetAll);
                             result = messagesConfig.getString("Messages.eventDataResetAllForAllPlayers");
                         }else {
-                            // Specific event, retained:
+                            // Specific event, in memory:
                             players.values().forEach(p -> p.resetEvent(eventName));
                             result = messagesConfig.getString("Messages.eventDataResetForAllPlayers")
                                     .replace("%event%", eventName);
@@ -193,22 +193,20 @@ public class PlayerManager {
         UUID uuid = event.getUniqueId();
         String playerName = event.getName();
 
-        // Load player data from file if exists
-        PlayerData playerData = null;
-        boolean alreadyOnMemory = false;
-        if(plugin.getConfigsManager().getMainConfigManager().isRetainPlayerDataUntilRestart()){
-            // Try to get retained data
+        // Data in memory is newer than the file. Loading holds the files lock, so a staff reset of
+        // offline files cannot interleave with an account being loaded.
+        PlayersConfigsManager files = plugin.getConfigsManager().getPlayerConfigsManager();
+        PlayerData playerData;
+        synchronized(files.filesLock()){
             playerData = getPlayerByUUID(uuid);
-            alreadyOnMemory = playerData != null;
-        }
-        if(playerData == null){
-            // Try to get file data
-            playerData = plugin.getConfigsManager().getPlayerConfigsManager().loadConfig(uuid);
+            if(playerData == null){
+                playerData = files.loadConfig(uuid);
+                if(playerData != null){
+                    addPlayer(playerData);
+                }
+            }
         }
         if(playerData != null){
-            if(!alreadyOnMemory){
-                addPlayer(playerData);
-            }
             if(playerData.getName() == null || !playerData.getName().equals(playerName)){
                 updatePlayerName(playerData.getName(),playerName,uuid);
                 playerData.setName(playerName);
@@ -221,22 +219,16 @@ public class PlayerManager {
         new ConditionEvent(plugin, player, event, EventType.PLAYER_LEAVE, null)
                 .checkEvent();
 
-        // Save player data into file and remove from map
+        // Save player data into file. It stays in memory until restart, so a rejoin always finds the
+        // newest data and a failed save is retried by the periodic save.
         PlayerData playerData = getPlayer(player,false);
-        if(playerData != null){
-            if(playerData.isModified()){
-                new BukkitRunnable(){
-                    @Override
-                    public void run() {
-                        plugin.getConfigsManager().getPlayerConfigsManager().saveConfig(playerData);
-                    }
-                }.runTaskAsynchronously(plugin);
-            }
-
-            // Retain player data if enabled
-            if(!plugin.getConfigsManager().getMainConfigManager().isRetainPlayerDataUntilRestart()){
-                removePlayer(playerData);
-            }
+        if(playerData != null && playerData.isModified()){
+            new BukkitRunnable(){
+                @Override
+                public void run() {
+                    plugin.getConfigsManager().getPlayerConfigsManager().saveConfig(playerData);
+                }
+            }.runTaskAsynchronously(plugin);
         }
     }
 }

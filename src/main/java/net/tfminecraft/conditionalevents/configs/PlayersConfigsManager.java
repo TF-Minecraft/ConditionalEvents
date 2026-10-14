@@ -6,12 +6,20 @@ import net.tfminecraft.conditionalevents.model.player.EventData;
 import net.tfminecraft.conditionalevents.model.player.GenericCallback;
 import net.tfminecraft.conditionalevents.model.player.PlayerData;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.scheduler.BukkitRunnable;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Level;
 
 public class PlayersConfigsManager extends DataFolderConfigManager{
 	
@@ -65,6 +73,14 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 	static PlayerData read(UUID uuid, ConfigurationSection config){
 		PlayerData playerData = new PlayerData(uuid,config.getString("name"));
 		playerData.setEventData(readEvents(config.getConfigurationSection("events")));
+		String seeded = config.getString("seeded-to");
+		if(seeded != null){
+			try{
+				playerData.setSeededTo(UUID.fromString(seeded));
+			}catch(IllegalArgumentException notCharacter){
+				// Not a character ID: treat as not seeded.
+			}
+		}
 		ConfigurationSection characters = config.getConfigurationSection("characters");
 		if(characters != null){
 			for(String key : characters.getKeys(false)){
@@ -92,6 +108,7 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 		players.set("name", player.name());
 		players.set("events", null);
 		players.set("characters", null);
+		players.set("seeded-to", player.seededTo() == null ? null : player.seededTo().toString());
 		writeEvents(players, "events", player.account());
 		for(Map.Entry<UUID, List<EventData>> character : player.characters().entrySet()){
 			writeEvents(players, "characters."+character.getKey()+".events", character.getValue());
@@ -106,14 +123,33 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 	}
 
 	/** Writes a snapshot; changes made meanwhile keep the data marked modified for the next save. */
-	public void saveConfig(PlayerData player){
+	/**
+	 * Writes a snapshot through a temporary file. The data is marked clean only when the write
+	 * succeeded and nothing changed meanwhile; a failure is logged and the data stays modified,
+	 * so the next save tries again.
+	 * @return whether the file was written
+	 */
+	public boolean saveConfig(PlayerData player){
 		synchronized(player.saveLock()){
 			PlayerData.Snapshot snapshot = player.snapshot();
 			CommonConfig playerConfig = getConfigFile(player.getUuid().toString()+".yml",true);
 			write(snapshot, playerConfig.getConfig());
-			playerConfig.saveConfig();
+			Path file = plugin.getDataFolder().toPath().resolve(folderName).resolve(player.getUuid()+".yml");
+			try{
+				writeAtomically(file, playerConfig.getConfig().saveToString());
+			}catch(IOException e){
+				plugin.getLogger().log(Level.SEVERE, "Could not save ConditionalEvents data of "+player.getUuid()+"; retrying with the next save", e);
+				return false;
+			}
 			player.markSaved(snapshot.revision());
+			return true;
 		}
+	}
+
+	static void writeAtomically(Path file, String text) throws IOException{
+		Path temporary = file.resolveSibling(file.getFileName()+".tmp");
+		Files.writeString(temporary, text, StandardCharsets.UTF_8);
+		Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 	}
 
 	@Override
@@ -127,11 +163,42 @@ public class PlayersConfigsManager extends DataFolderConfigManager{
 		}
 	}
 
+	private final Object filesLock = new Object();
+
+	/** Held while loading an account into memory and while resetting the files of accounts not in memory. */
+	public Object filesLock(){
+		return filesLock;
+	}
+
+	/**
+	 * Resets the files of accounts not in memory, atomically. Accounts in memory are skipped here:
+	 * they are reset in memory and saved as usual, so a reset never writes over a newer save.
+	 */
 	public void resetDataForAllPlayers(String eventName){
-		ArrayList<CommonConfig> configs = getConfigs();
-		for(CommonConfig commonConfig : configs) {
-			if(reset(commonConfig.getConfig(), eventName)){
-				commonConfig.saveConfig();
+		Path folder = plugin.getDataFolder().toPath().resolve(folderName);
+		synchronized(filesLock){
+			File[] files = folder.toFile().listFiles((dir, name) -> name.endsWith(".yml"));
+			if(files == null){
+				return;
+			}
+			for(File file : files){
+				UUID uuid;
+				try{
+					uuid = UUID.fromString(file.getName().substring(0, file.getName().length()-4));
+				}catch(IllegalArgumentException notAccount){
+					continue;
+				}
+				if(plugin.getPlayerManager().getPlayerByUUID(uuid) != null){
+					continue;
+				}
+				YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+				if(reset(yaml, eventName)){
+					try{
+						writeAtomically(file.toPath(), yaml.saveToString());
+					}catch(IOException e){
+						plugin.getLogger().log(Level.SEVERE, "Could not reset ConditionalEvents data of "+uuid, e);
+					}
+				}
 			}
 		}
 	}

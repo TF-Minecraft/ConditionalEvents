@@ -2,9 +2,11 @@ package net.tfminecraft.conditionalevents.model.player;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * An account's event data. Events with {@code data_scope: character} keep theirs per character;
@@ -18,6 +20,7 @@ public class PlayerData {
     private String name;
     private boolean modified;
     private long revision;
+    private UUID seededTo;
     private long resetAllCount;
     private final Map<String, Long> resetCounts = new HashMap<>();
     private ArrayList<EventData> eventData;
@@ -32,7 +35,8 @@ public class PlayerData {
     }
 
     /** A copy of the data to write, with the revision it was taken at. */
-    public record Snapshot(String name, List<EventData> account, Map<UUID, List<EventData>> characters, long revision) {
+    public record Snapshot(String name, List<EventData> account, Map<UUID, List<EventData>> characters, UUID seededTo,
+            long revision) {
     }
 
     public UUID getUuid() {
@@ -65,10 +69,51 @@ public class PlayerData {
         characterEventData.put(character, events);
     }
 
+    /** Loading only: the character this account's old data was given to, or null if not yet. */
+    public synchronized void setSeededTo(UUID seededTo) {
+        this.seededTo = seededTo;
+    }
+
+    public synchronized UUID getSeededTo() {
+        return seededTo;
+    }
+
+    /**
+     * Once per account: moves its account-level data for the matching events to the character,
+     * merging with what the character has (done stays done, the later cooldown start wins), and
+     * records the character so it never happens again.
+     * @return how many events moved, or -1 if the account was already seeded
+     */
+    public synchronized int seed(UUID character, Predicate<String> events) {
+        if (seededTo != null) {
+            return -1;
+        }
+        int moved = 0;
+        Iterator<EventData> account = eventData.iterator();
+        while (account.hasNext()) {
+            EventData e = account.next();
+            if (!events.test(e.getName())) {
+                continue;
+            }
+            EventData own = find(character, e.getName());
+            if (own == null) {
+                writable(character).add(new EventData(e.getName(), e.getCooldown(), e.isOneTime()));
+            } else {
+                own.setOneTime(own.isOneTime() || e.isOneTime());
+                own.setCooldown(Math.max(own.getCooldown(), e.getCooldown()));
+            }
+            account.remove();
+            moved++;
+        }
+        seededTo = character;
+        touched();
+        return moved;
+    }
+
     public synchronized Snapshot snapshot() {
         Map<UUID, List<EventData>> characters = new HashMap<>();
         characterEventData.forEach((character, events) -> characters.put(character, copy(events)));
-        return new Snapshot(name, copy(eventData), characters, revision);
+        return new Snapshot(name, copy(eventData), characters, seededTo, revision);
     }
 
     private static List<EventData> copy(List<EventData> events) {
