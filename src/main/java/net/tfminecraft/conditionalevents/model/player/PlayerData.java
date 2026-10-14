@@ -1,12 +1,10 @@
 package net.tfminecraft.conditionalevents.model.player;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Predicate;
 
 /**
  * An account's event data. Events with {@code data_scope: character} keep theirs per character;
@@ -141,35 +139,6 @@ public class PlayerData {
         }else{
             return e.isOneTime();
         }
-    }
-
-    /**
-     * Moves the account's data for matching events to a character, merging with what the character
-     * already has: an event done once stays done, and the later cooldown start wins.
-     * @return how many events moved
-     */
-    public int moveToCharacter(UUID character, Predicate<String> events){
-        int moved = 0;
-        Iterator<EventData> account = eventData.iterator();
-        while(account.hasNext()){
-            EventData e = account.next();
-            if(!events.test(e.getName())){
-                continue;
-            }
-            EventData own = getEventData(character, e.getName());
-            if(own == null){
-                writable(character).add(new EventData(e.getName(), e.getCooldown(), e.isOneTime()));
-            }else{
-                own.setOneTime(own.isOneTime() || e.isOneTime());
-                own.setCooldown(Math.max(own.getCooldown(), e.getCooldown()));
-            }
-            account.remove();
-            moved++;
-        }
-        if(moved > 0){
-            modified = true;
-        }
-        return moved;
     }
 
     public boolean isModified() {

@@ -1,7 +1,6 @@
 package net.tfminecraft.conditionalevents;
 
 import net.tfminecraft.conditionalevents.character.CharacterTracker;
-import net.tfminecraft.conditionalevents.model.CEEvent;
 import net.tfminecraft.conditionalevents.api.ConditionalEventsAPI;
 import net.tfminecraft.conditionalevents.api.ExpansionCE;
 import net.tfminecraft.conditionalevents.configs.ConfigsManager;
@@ -64,10 +63,7 @@ public class ConditionalEvents extends JavaPlugin {
 		this.interruptEventManager = new InterruptEventManager(this);
 		this.configsManager = new ConfigsManager(this);
 		this.configsManager.configure();
-		this.characterTracker = new CharacterTracker(playerManager, name -> {
-			CEEvent event = eventsManager.getEvent(name);
-			return event != null && event.isCharacterScoped();
-		}, getLogger());
+		this.characterTracker = new CharacterTracker();
 
 		registerEvents();
 		registerCommands();
