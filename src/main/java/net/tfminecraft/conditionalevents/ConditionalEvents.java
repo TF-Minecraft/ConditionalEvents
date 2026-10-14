@@ -1,6 +1,6 @@
 package net.tfminecraft.conditionalevents;
 
-
+import net.tfminecraft.conditionalevents.character.CharacterTracker;
 import net.tfminecraft.conditionalevents.api.ConditionalEventsAPI;
 import net.tfminecraft.conditionalevents.api.ExpansionCE;
 import net.tfminecraft.conditionalevents.configs.ConfigsManager;
@@ -35,6 +35,7 @@ public class ConditionalEvents extends JavaPlugin {
 	private EventsManager eventsManager;
 	private DependencyManager dependencyManager;
 	private PlayerManager playerManager;
+	private CharacterTracker characterTracker;
 	private ConfigsManager configsManager;
 	private DebugManager debugManager;
 	private BungeeMessagingManager bungeeMessagingManager;
@@ -62,6 +63,7 @@ public class ConditionalEvents extends JavaPlugin {
 		this.interruptEventManager = new InterruptEventManager(this);
 		this.configsManager = new ConfigsManager(this);
 		this.configsManager.configure();
+		this.characterTracker = new CharacterTracker();
 
 		registerEvents();
 		registerCommands();
@@ -74,6 +76,7 @@ public class ConditionalEvents extends JavaPlugin {
 
 
 
+		characterTracker.start();
 		reloadPlayerDataSaveTask();
 
 		ConditionalEventsAPI api = new ConditionalEventsAPI(this);
@@ -97,6 +100,7 @@ public class ConditionalEvents extends JavaPlugin {
 	public void registerEvents() {
 		PluginManager pm = getServer().getPluginManager();
 		pm.registerEvents(new PlayerEventsListener(this), this);
+		pm.registerEvents(characterTracker, this);
 		pm.registerEvents(new ItemEventsListener(this), this);
 		pm.registerEvents(new ArmorListener(new ArrayList<>()), this);
 		pm.registerEvents(new ItemSelectListener(this), this);
@@ -221,6 +225,10 @@ public class ConditionalEvents extends JavaPlugin {
 
 	public BungeeMessagingManager getBungeeMessagingManager() {
 		return bungeeMessagingManager;
+	}
+
+	public CharacterTracker getCharacterTracker() {
+		return characterTracker;
 	}
 
 	public PlayerManager getPlayerManager() {

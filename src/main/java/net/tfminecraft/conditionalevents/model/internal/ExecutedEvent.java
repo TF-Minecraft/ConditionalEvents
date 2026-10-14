@@ -3,6 +3,7 @@ package net.tfminecraft.conditionalevents.model.internal;
 import net.tfminecraft.conditionalevents.ConditionalEvents;
 import net.tfminecraft.conditionalevents.api.ConditionalEventsEvent;
 import net.tfminecraft.conditionalevents.managers.DebugManager;
+import net.tfminecraft.conditionalevents.managers.PlayerManager;
 import net.tfminecraft.conditionalevents.managers.EventsManager;
 import net.tfminecraft.conditionalevents.model.CEEvent;
 import net.tfminecraft.conditionalevents.model.StoredVariable;
@@ -38,6 +39,9 @@ public class ExecutedEvent {
 
     private boolean onWait;
     private int currentActionPos;
+
+    // Per-character runs share one record with the action groups they call.
+    private CharacterRun characterRun;
 
     public ExecutedEvent(Player player, ArrayList<StoredVariable> eventVariables, CEEvent event, String actionGroupName
         , Event minecraftEvent, LivingEntity target, ConditionalEvents plugin, AdditionalEventStorage additionalEventStorage) {
@@ -131,12 +135,47 @@ public class ExecutedEvent {
         }
     }
 
+    /**
+     * Ties a per-character run, and the action groups it calls, to the character it started for.
+     * If that character is no longer in play when an action is due (after a wait, or when an async
+     * event hands over to the main thread), the rest is dropped and the marks the run set are
+     * undone, so the character can earn it again. Null leaves the run unbound.
+     */
+    public void bindToCharacter(CharacterRun characterRun){
+        this.characterRun = characterRun;
+    }
+
+    public CharacterRun getCharacterRun(){
+        return characterRun;
+    }
+
+    /** Whether the run may carry on; drops it when its character has left. */
+    boolean stillForItsCharacter(){
+        if(characterRun == null){
+            return true;
+        }
+        if(characterRun.isAbandoned()){
+            return false;
+        }
+        PlayerManager playerManager = plugin.getPlayerManager();
+        if(characterRun.character().equals(playerManager.playedCharacter(player))){
+            return true;
+        }
+        if(characterRun.abandon(playerManager.getPlayer(player,false),event.getName())){
+            plugin.getDebugManager().sendActionsMessage(event.getName(),"abandoned: character left",player);
+        }
+        return false;
+    }
+
     public void continueWithActions(){
         this.onWait = false;
         executeActionsFinal();
     }
 
     private void executeActionsFinal(){
+        if(!stillForItsCharacter()){
+            return;
+        }
         DebugManager debugManager = plugin.getDebugManager();
         boolean isDebugActions = plugin.getConfigsManager().getMainConfigManager().isDebugActions();
         VariablesProperties variablesProperties = generateVariableProperties();

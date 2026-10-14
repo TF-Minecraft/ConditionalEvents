@@ -16,6 +16,7 @@ import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 
 import java.util.ArrayList;
+import java.util.UUID;
 import java.util.List;
 
 public class EventsManager {
@@ -61,6 +62,18 @@ public class EventsManager {
             return;
         }
 
+        // Events keeping per-character data need a character in play, fixed here for the whole run.
+        // Without a player there is no data to keep, as upstream.
+        UUID character = null;
+        CharacterRun run = null;
+        if(player != null && event.usesCharacterData()){
+            character = plugin.getPlayerManager().playedCharacter(player);
+            if(character == null){
+                return;
+            }
+            run = new CharacterRun(character);
+        }
+
         //Ignore if cancelled
         if(event.isIgnoreIfCancelled()){
             Event minecraftEvent = conditionEvent.getMinecraftEvent();
@@ -89,11 +102,12 @@ public class EventsManager {
 
             //Check One time
             if(event.isOneTime()){
-                boolean isOneTime = playerManager.getEventOneTime(event.getName(),player);
+                boolean isOneTime = playerManager.getEventOneTime(event.getName(),player,character);
                 if(isOneTime){
                     ExecutedEvent executedEvent = new ExecutedEvent(player, conditionEvent.getEventVariables(), event,
                          "one_time", conditionEvent.getMinecraftEvent(), conditionEvent.getTarget(), plugin,
                             conditionEvent.getAdditionalEventStorage());
+                    executedEvent.bindToCharacter(run);
                     plugin.getDebugManager().sendActionsMessage(event.getName(),"one_time",player);
                     executedEvent.executeActions();
                     return;
@@ -102,7 +116,7 @@ public class EventsManager {
 
             //Check Cooldown
             if(event.getCooldown() != 0 && !bypassCooldown){
-                long eventCooldownMillis = playerManager.getEventCooldown(event.getName(),player)+(event.getCooldown()*1000);
+                long eventCooldownMillis = playerManager.getEventCooldown(event.getName(),player,character)+(event.getCooldown()*1000);
                 long currentTimeMillis = System.currentTimeMillis();
                 if(eventCooldownMillis > currentTimeMillis){
                     String timeString = TimeUtils.getTime((eventCooldownMillis-currentTimeMillis)/1000,messagesManager);
@@ -110,6 +124,7 @@ public class EventsManager {
                     ExecutedEvent executedEvent = new ExecutedEvent(player, conditionEvent.getEventVariables(), event,
                           "cooldown", conditionEvent.getMinecraftEvent(), conditionEvent.getTarget(), plugin,
                             conditionEvent.getAdditionalEventStorage());
+                    executedEvent.bindToCharacter(run);
                     plugin.getDebugManager().sendActionsMessage(event.getName(),"cooldown",player);
                     executedEvent.executeActions();
                     return;
@@ -128,14 +143,22 @@ public class EventsManager {
             //Set One Time
             if(event.isOneTime()){
                 if(!event.getPreventOneTimeActivationActionGroups().contains(actionGroupWithoutParameters)){
-                    playerManager.setEventOneTime(event.getName(),player);
+                    playerManager.setEventOneTime(event.getName(),player,character,true);
+                    if(run != null){
+                        run.markedOneTime(playerManager.getPlayer(player,true).getResetEpoch(event.getName()));
+                    }
                 }
             }
 
             //Set Cooldown
             if(event.getCooldown() != 0 && !bypassCooldown){
                 if(!event.getPreventCooldownActivationActionGroups().contains(actionGroupWithoutParameters)){
-                    playerManager.setEventCooldown(event.getName(),player);
+                    long previous = playerManager.getEventCooldown(event.getName(),player,character);
+                    long now = System.currentTimeMillis();
+                    playerManager.setEventCooldown(event.getName(),player,character,now);
+                    if(run != null){
+                        run.markedCooldown(previous,now,playerManager.getPlayer(player,true).getResetEpoch(event.getName()));
+                    }
                 }
             }
         }
@@ -144,6 +167,7 @@ public class EventsManager {
         ExecutedEvent executedEvent = new ExecutedEvent(player, conditionEvent.getEventVariables(), event,
                 executeActionGroup, conditionEvent.getMinecraftEvent(), conditionEvent.getTarget(), plugin,
                 conditionEvent.getAdditionalEventStorage());
+        executedEvent.bindToCharacter(run);
         executedEvent.executeActions();
     }
 

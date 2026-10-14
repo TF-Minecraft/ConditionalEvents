@@ -15,6 +15,7 @@ public class CEEvent {
     private List<ActionGroup> actionGroups;
 
     private boolean oneTime;
+    private boolean characterScoped = true;
 
     private String ignoreWithPermission;
 
@@ -71,6 +72,24 @@ public class CEEvent {
 
     public boolean isOneTime() {
         return oneTime;
+    }
+
+    /** Whether the event's data belongs to the played character: {@code data_scope: character}, the default. */
+    public boolean isCharacterScoped() {
+        return characterScoped;
+    }
+
+    /**
+     * Whether runs depend on the played character: the event is character-scoped and keeps data
+     * ({@code one_time} or a cooldown). Events without data have nothing to keep per character, so
+     * they run as upstream, with or without a character in play.
+     */
+    public boolean usesCharacterData() {
+        return characterScoped && (oneTime || cooldown != 0);
+    }
+
+    public void setCharacterScoped(boolean characterScoped) {
+        this.characterScoped = characterScoped;
     }
 
     public void setOneTime(boolean oneTime) {

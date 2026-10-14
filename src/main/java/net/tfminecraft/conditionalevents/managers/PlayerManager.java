@@ -1,6 +1,7 @@
 package net.tfminecraft.conditionalevents.managers;
 
 import net.tfminecraft.conditionalevents.ConditionalEvents;
+import net.tfminecraft.conditionalevents.model.CEEvent;
 import net.tfminecraft.conditionalevents.configs.PlayersConfigsManager;
 import net.tfminecraft.conditionalevents.model.EventType;
 import net.tfminecraft.conditionalevents.model.internal.ConditionEvent;
@@ -75,34 +76,66 @@ public class PlayerManager {
     }
 
 
+    /** Where an event's data lives for this player: the account, or the played character. */
+    private record Scope(boolean available, UUID character) {
+        static final Scope ACCOUNT = new Scope(true, null);
+    }
+
+    private Scope scope(String eventName, Player player){
+        CEEvent event = plugin.getEventsManager().getEvent(eventName);
+        if(event == null || !event.usesCharacterData()){
+            return Scope.ACCOUNT;
+        }
+        UUID character = playedCharacter(player);
+        return new Scope(character != null, character);
+    }
+
+    /** The character the player is playing, or null between characters. */
+    public UUID playedCharacter(Player player){
+        return plugin.getCharacterTracker().character(player.getUniqueId()).orElse(null);
+    }
+
     public void setEventCooldown(String eventName,Player player){
-        PlayerData p = getPlayer(player,true);
-        p.setCooldown(eventName,System.currentTimeMillis());
-        p.setModified(true);
+        Scope scope = scope(eventName,player);
+        if(scope.available()){
+            setEventCooldown(eventName,player,scope.character(),System.currentTimeMillis());
+        }
+    }
+
+    /** {@code character} null means the account's data. */
+    public void setEventCooldown(String eventName,Player player,UUID character,long millis){
+        getPlayer(player,true).setCooldown(character,eventName,millis);
     }
 
     public long getEventCooldown(String eventName,Player player){
+        Scope scope = scope(eventName,player);
+        return scope.available() ? getEventCooldown(eventName,player,scope.character()) : 0;
+    }
+
+    public long getEventCooldown(String eventName,Player player,UUID character){
         PlayerData p = getPlayer(player,false);
-        if(p == null){
-            return 0;
-        }else{
-            return p.getCooldown(eventName);
-        }
+        return p == null ? 0 : p.getCooldown(character,eventName);
     }
 
     public void setEventOneTime(String eventName,Player player){
-        PlayerData p = getPlayer(player,true);
-        p.setOneTime(eventName,true);
-        p.setModified(true);
+        Scope scope = scope(eventName,player);
+        if(scope.available()){
+            setEventOneTime(eventName,player,scope.character(),true);
+        }
+    }
+
+    public void setEventOneTime(String eventName,Player player,UUID character,boolean oneTime){
+        getPlayer(player,true).setOneTime(character,eventName,oneTime);
     }
 
     public boolean getEventOneTime(String eventName,Player player){
+        Scope scope = scope(eventName,player);
+        return scope.available() && getEventOneTime(eventName,player,scope.character());
+    }
+
+    public boolean getEventOneTime(String eventName,Player player,UUID character){
         PlayerData p = getPlayer(player,false);
-        if(p == null){
-            return false;
-        }else{
-            return p.isEventOneTime(eventName);
-        }
+        return p != null && p.isEventOneTime(character,eventName);
     }
 
     public String resetDataForPlayer(String playerName, String eventName, FileConfiguration messagesConfig){
