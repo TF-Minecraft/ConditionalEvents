@@ -1,15 +1,25 @@
 # ConditionalEvents
 
-Minecraft Plugin that allows you to add different conditions to certain events. If these conditions are accomplished, then custom actions will be executed. The possibilities of what you can do with the plugin are endless.
+> Event triggers for TF-Minecraft, maintained from [Ajneb97/ConditionalEvents](https://github.com/Ajneb97/ConditionalEvents).
 
-**Spigot / Paper 1.8.9+**
+ConditionalEvents runs actions when Minecraft events meet configured conditions:
+commands, item use, joins, deaths, regions and more. Events can run once only or
+on a cooldown. This copy tracks upstream 4.80.3 and builds for Paper 1.21.10. It
+has no update checker or bStats reporting.
 
-## Download Links
-- [SpigotMC](https://www.spigotmc.org/resources/conditionalevents-custom-actions-for-specific-events-1-8-26-2.82271/)
-- [Modrinth](https://modrinth.com/plugin/conditionalevents)
+## Documentation
 
+[Project documentation](https://github.com/TF-Minecraft/Docs/blob/main/projects/ConditionalEvents/README.md)
 
-## Other Links
-- [Wiki](https://ajneb97.gitbook.io/conditionalevents)
-- [bStats](https://bstats.org/plugin/bukkit/ConditionalEvents/19371)
-- [Support me on Ko-fi](https://ko-fi.com/ajneb97)
+The upstream [ConditionalEvents wiki](https://ajneb97.gitbook.io/conditionalevents)
+covers event types, conditions, actions and variables.
+
+## Tests
+
+With Java 21 and the private build inputs prepared by
+`.github/scripts/prepare-release.sh`, run `mvn clean verify`.
+
+## License
+
+[MIT](LICENSE), copyright Ajneb97. TF-Minecraft changes are released under the
+same license.

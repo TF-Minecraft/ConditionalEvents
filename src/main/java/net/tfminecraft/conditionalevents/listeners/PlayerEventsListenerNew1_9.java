@@ -1,0 +1,44 @@
+package net.tfminecraft.conditionalevents.listeners;
+
+import net.tfminecraft.conditionalevents.ConditionalEvents;
+import net.tfminecraft.conditionalevents.model.EventType;
+import net.tfminecraft.conditionalevents.model.StoredVariable;
+import net.tfminecraft.conditionalevents.model.internal.ConditionEvent;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.TabCompleteEvent;
+
+import java.util.ArrayList;
+
+public class PlayerEventsListenerNew1_9 implements Listener {
+
+    public ConditionalEvents plugin;
+    public PlayerEventsListenerNew1_9(ConditionalEvents plugin) {
+        this.plugin = plugin;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onTabComplete(TabCompleteEvent event){
+        if(!(event.getSender() instanceof Player)){
+            return;
+        }
+
+        Player player = (Player) event.getSender();
+        String command = event.getBuffer();
+        String[] args = command.split(" ",-1);
+        ArrayList<StoredVariable> eventVariables = new ArrayList<>();
+        for(int i=1;i<args.length;i++) {
+            eventVariables.add(new StoredVariable("%arg_"+(i)+"%",args[i]));
+        }
+
+        ConditionEvent conditionEvent = new ConditionEvent(plugin, player, event, EventType.PLAYER_TAB_COMPLETE, null);
+        if(!conditionEvent.containsValidEvents()) return;
+        conditionEvent.addVariables(
+                        new StoredVariable("%main_command%",args[0]),
+                        new StoredVariable("%args_length%",(args.length-1)+"")
+                ).addVariables(eventVariables)
+                .checkEvent();
+    }
+}
