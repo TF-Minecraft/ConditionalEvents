@@ -72,4 +72,27 @@ class PlayerDataTest {
         data.setModified(true);
         assertTrue(data.isModified());
     }
+
+    @Test
+    void sharingMarksOnlyWhatAnotherCharacterHasDone() {
+        UUID mira = UUID.randomUUID();
+        UUID aldric = UUID.randomUUID();
+        PlayerData data = new PlayerData(UUID.randomUUID(), "Steve");
+        data.setOneTime(mira, "duchy_1", true);
+        data.setOneTime(mira, "duchy_2", true);
+        data.setOneTime(mira, "duchy_4", false);
+        data.setOneTime(aldric, "duchy_2", true);
+        data.setOneTime("duchy_3", true);
+        data.markSaved(data.snapshot().revision());
+
+        assertEquals(java.util.List.of("duchy_1"), data.share(aldric, java.util.List.of("duchy_1", "duchy_2", "duchy_3", "duchy_4")));
+        assertTrue(data.isEventOneTime(aldric, "duchy_1"));
+        assertFalse(data.isEventOneTime(aldric, "duchy_3"));
+        assertTrue(data.isModified());
+
+        UUID fresh = UUID.randomUUID();
+        assertEquals(java.util.List.of("duchy_1", "duchy_2"), data.share(fresh, java.util.List.of("duchy_1", "duchy_2")),
+                "A character with no data yet gets everything");
+        assertEquals(java.util.List.of(), data.share(fresh, java.util.List.of("duchy_1", "duchy_2")));
+    }
 }

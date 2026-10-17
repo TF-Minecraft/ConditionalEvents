@@ -1,6 +1,7 @@
 package net.tfminecraft.conditionalevents.character;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,19 +28,26 @@ import net.tfminecraft.tlibs.character.Characters;
  * Which character each player is playing, readable from any thread, since events such as chat run
  * off the main thread. On an account's first session it also gives the account's old data for
  * per-character events to its most-played character, matching what Codex does with old journals.
+ * Shortly after a session starts, the character gets the shared one-time events (see
+ * {@link OneTimeSharing}) another of the account's characters has done.
  */
 public final class CharacterTracker implements Listener {
+    /** Shared events arrive after the character's class and body are in place, and once the screen settles. */
+    static final long SHARE_DELAY_TICKS = 40L;
+
     private final Map<UUID, UUID> current = new ConcurrentHashMap<>();
     private final PlayerManager players;
     private final Predicate<String> perCharacter;
     private final LegacyRecipient recipients;
+    private final OneTimeSharing sharing;
     private final Logger logger;
 
     public CharacterTracker(PlayerManager players, Predicate<String> perCharacter, LegacyRecipient recipients,
-            Logger logger) {
+            OneTimeSharing sharing, Logger logger) {
         this.players = players;
         this.perCharacter = perCharacter;
         this.recipients = recipients;
+        this.sharing = sharing;
         this.logger = logger;
     }
 
@@ -51,13 +59,13 @@ public final class CharacterTracker implements Listener {
     /** Picks up characters already in play when the plugin enables. Main thread only. */
     public void start() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            Characters.currentSession(player).ifPresent(session -> begin(session.ref()));
+            Characters.currentSession(player).ifPresent(session -> begin(player, session.ref()));
         }
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onStart(CharacterSessionStartEvent event) {
-        begin(event.getSession().ref());
+        begin(event.getPlayer(), event.getSession().ref());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -71,9 +79,29 @@ public final class CharacterTracker implements Listener {
         current.remove(event.getPlayer().getUniqueId());
     }
 
-    private void begin(CharacterRef ref) {
+    private void begin(Player player, CharacterRef ref) {
         seed(ref.ownerId());
         current.put(ref.ownerId(), ref.characterId());
+        sharing.later(SHARE_DELAY_TICKS, () -> share(player, ref));
+    }
+
+    /**
+     * Marks the shared events another character of the account has done as done for this one and
+     * runs their {@code shared} action group, while that character is still in play.
+     */
+    void share(Player player, CharacterRef ref) {
+        PlayerData data = players.getPlayerByUUID(ref.ownerId());
+        if (!player.isOnline() || data == null || !ref.characterId().equals(current.get(ref.ownerId()))) {
+            return;
+        }
+        List<String> shared = data.share(ref.characterId(), sharing.sharedEvents());
+        for (String event : shared) {
+            sharing.run(player, ref.characterId(), event, data.getResetEpoch(event));
+        }
+        if (!shared.isEmpty()) {
+            logger.info("Shared " + shared.size() + " one-time events of account " + ref.ownerId()
+                    + " with its character " + ref.characterId());
+        }
     }
 
     /**

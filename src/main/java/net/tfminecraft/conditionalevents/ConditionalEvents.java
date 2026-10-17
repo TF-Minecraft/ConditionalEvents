@@ -68,7 +68,7 @@ public class ConditionalEvents extends JavaPlugin {
 		this.characterTracker = new CharacterTracker(playerManager, name -> {
 			CEEvent event = eventsManager.getEvent(name);
 			return event != null && event.usesCharacterData();
-		}, new LegacyRecipient(getDataFolder().getParentFile().toPath()), getLogger());
+		}, new LegacyRecipient(getDataFolder().getParentFile().toPath()), new OneTimeSharingManager(this), getLogger());
 
 		registerEvents();
 		registerCommands();

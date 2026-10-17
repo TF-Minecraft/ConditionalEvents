@@ -23,4 +23,19 @@ class CEEventScopeTest {
         meditate.setCharacterScoped(false);
         assertFalse(meditate.usesCharacterData());
     }
+
+    @Test
+    void onlyPerCharacterOneTimeEventsShareTheirFlag() {
+        CEEvent duchy = new CEEvent("sf_title_enter_1");
+        duchy.setShareOneTime(true);
+        assertFalse(duchy.sharesOneTime(), "Without one_time there is nothing to share");
+        duchy.setOneTime(true);
+        assertTrue(duchy.sharesOneTime());
+        duchy.setCharacterScoped(false);
+        assertFalse(duchy.sharesOneTime(), "Account data is shared already");
+
+        CEEvent unlock = new CEEvent("codex_die");
+        unlock.setOneTime(true);
+        assertFalse(unlock.sharesOneTime());
+    }
 }

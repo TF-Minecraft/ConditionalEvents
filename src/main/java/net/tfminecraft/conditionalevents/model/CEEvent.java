@@ -16,6 +16,7 @@ public class CEEvent {
 
     private boolean oneTime;
     private boolean characterScoped = true;
+    private boolean shareOneTime;
 
     private String ignoreWithPermission;
 
@@ -90,6 +91,18 @@ public class CEEvent {
 
     public void setCharacterScoped(boolean characterScoped) {
         this.characterScoped = characterScoped;
+    }
+
+    /**
+     * Whether a character gets this per-character one-time event once any other character of its
+     * account has done it ({@code share_one_time: true}), running its {@code shared} action group.
+     */
+    public boolean sharesOneTime() {
+        return shareOneTime && oneTime && characterScoped;
+    }
+
+    public void setShareOneTime(boolean shareOneTime) {
+        this.shareOneTime = shareOneTime;
     }
 
     public void setOneTime(boolean oneTime) {
