@@ -51,6 +51,39 @@ class CharacterTrackerTest {
     private PlayerManager players;
     private CharacterTracker tracker;
     private Player player;
+    private FakeSharing sharing;
+
+    private record Run(UUID character, String event, long epoch) {
+    }
+
+    private static final class FakeSharing implements OneTimeSharing {
+        List<String> events = List.of();
+        final List<Long> delays = new ArrayList<>();
+        final List<Runnable> tasks = new ArrayList<>();
+        final List<Run> runs = new ArrayList<>();
+
+        @Override
+        public java.util.Collection<String> sharedEvents() {
+            return events;
+        }
+
+        @Override
+        public void run(Player player, UUID character, String event, long resetEpoch) {
+            runs.add(new Run(character, event, resetEpoch));
+        }
+
+        @Override
+        public void later(long ticks, Runnable task) {
+            delays.add(ticks);
+            tasks.add(task);
+        }
+
+        void runAll() {
+            List<Runnable> due = new ArrayList<>(tasks);
+            tasks.clear();
+            due.forEach(Runnable::run);
+        }
+    }
 
     @BeforeEach
     void setUp() {
@@ -72,7 +105,9 @@ class CharacterTrackerTest {
             public void close() {
             }
         });
-        tracker = new CharacterTracker(players, Set.of("research_bronze")::contains, new LegacyRecipient(plugins), logger);
+        sharing = new FakeSharing();
+        tracker = new CharacterTracker(players, Set.of("research_bronze")::contains, new LegacyRecipient(plugins), sharing,
+                logger);
         player = mock(Player.class);
         when(player.getUniqueId()).thenReturn(owner);
     }
@@ -171,6 +206,60 @@ class CharacterTrackerTest {
         tracker.onStart(start(alt));
         assertEquals(alt, data.getSeededTo());
         assertTrue(logs.isEmpty());
+    }
+
+    @Test
+    void aCharacterGetsTheSharedEventsItsAccountHasDone() {
+        sharing.events = List.of("duchy_1", "duchy_2", "duchy_3");
+        when(player.isOnline()).thenReturn(true);
+        PlayerData data = new PlayerData(owner, "Steve");
+        data.setSeededTo(other);
+        data.setOneTime(other, "duchy_1", true);
+        data.setOneTime(other, "duchy_2", true);
+        data.setOneTime(alt, "duchy_2", true);
+        data.setOneTime("duchy_3", true);
+        data.resetEvent("duchy_1");
+        data.setOneTime(other, "duchy_1", true);
+        players.addPlayer(data);
+
+        tracker.onStart(start(alt));
+        assertEquals(List.of(CharacterTracker.SHARE_DELAY_TICKS), sharing.delays);
+        assertFalse(data.isEventOneTime(alt, "duchy_1"), "Nothing arrives before the delay");
+        sharing.runAll();
+
+        assertTrue(data.isEventOneTime(alt, "duchy_1"));
+        assertFalse(data.isEventOneTime(alt, "duchy_3"), "Account-level data is not a character's");
+        assertEquals(List.of(new Run(alt, "duchy_1", 1)), sharing.runs, "Only what the character lacked runs");
+        assertTrue(logs.stream().anyMatch(r -> r.getMessage().contains(
+                "Shared 1 one-time events of account " + owner + " with its character " + alt)));
+
+        tracker.onStart(start(alt));
+        sharing.runAll();
+        assertEquals(1, sharing.runs.size(), "Nothing is shared twice");
+    }
+
+    @Test
+    void sharingWaitsForTheSameCharacterToStillBeInPlay() {
+        sharing.events = List.of("duchy_1");
+        PlayerData data = new PlayerData(owner, "Steve");
+        data.setSeededTo(other);
+        data.setOneTime(other, "duchy_1", true);
+
+        tracker.onStart(start(alt));
+        sharing.runAll();
+        players.addPlayer(data);
+        tracker.onStart(start(alt));
+        sharing.runAll();
+        when(player.isOnline()).thenReturn(true);
+        tracker.onStart(start(alt));
+        tracker.onEnd(end(alt));
+        sharing.runAll();
+        tracker.onStart(start(alt));
+        tracker.onStart(start(other));
+        sharing.runAll();
+
+        assertFalse(data.isEventOneTime(alt, "duchy_1"));
+        assertTrue(sharing.runs.isEmpty(), "No player data, an offline player or a character no longer in play get nothing");
     }
 
     private CharacterInfo played(UUID character, long seconds) {

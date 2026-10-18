@@ -1,6 +1,7 @@
 package net.tfminecraft.conditionalevents.model.player;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -108,6 +109,26 @@ public class PlayerData {
         seededTo = character;
         touched();
         return moved;
+    }
+
+    /**
+     * Marks done for the character each of the events that another of the account's characters has
+     * done and it has not.
+     * @return the events marked, in the order given
+     */
+    public synchronized List<String> share(UUID character, Collection<String> events) {
+        List<String> shared = new ArrayList<>();
+        for (String event : events) {
+            if (!isEventOneTime(character, event) && characterEventData.keySet().stream()
+                    .anyMatch(other -> !other.equals(character) && isEventOneTime(other, event))) {
+                shared.add(event);
+            }
+        }
+        // Marked after the search: the character's first mark adds it to the map being searched.
+        for (String event : shared) {
+            setOneTime(character, event, true);
+        }
+        return shared;
     }
 
     public synchronized Snapshot snapshot() {

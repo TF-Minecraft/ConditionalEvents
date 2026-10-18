@@ -65,6 +65,7 @@ public class ConfigsManager {
                     List<ActionGroup> actionGroups = new ArrayList<ActionGroup>();
                     boolean oneTime = false;
                     boolean characterScoped = true;
+                    boolean shareOneTime = false;
                     String ignoreWithPermission = null;
                     long cooldown = 0;
                     boolean enabled = true;
@@ -175,6 +176,9 @@ public class ConfigsManager {
                             plugin.getLogger().warning("Event "+key+" has data_scope "+scope+"; use character or account. Using character.");
                         }
                     }
+                    if(config.contains(path+".share_one_time")) {
+                        shareOneTime = Boolean.valueOf(config.getString(path+".share_one_time"));
+                    }
                     if(config.contains(path+".enabled")) {
                         enabled = Boolean.valueOf(config.getString(path+".enabled"));
                     }
@@ -199,6 +203,7 @@ public class ConfigsManager {
                     event.setIgnoreWithPermission(ignoreWithPermission);
                     event.setOneTime(oneTime);
                     event.setCharacterScoped(characterScoped);
+                    event.setShareOneTime(shareOneTime);
                     event.setEnabled(enabled);
                     event.setIgnoreIfCancelled(ignoreIfCancelled);
                     event.setPreventCooldownActivationActionGroups(preventCooldownActivationActionGroups);
