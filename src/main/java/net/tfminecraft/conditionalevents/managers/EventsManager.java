@@ -16,20 +16,36 @@ import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.UUID;
 import java.util.List;
+import java.util.Map;
 
 public class EventsManager {
 
     private ConditionalEvents plugin;
     private ArrayList<CEEvent> events;
+    // Every listener asks for its type's events on each Bukkit event (and the ProtocolLib listener on each
+    // outgoing chat packet), so they are grouped once per load instead of scanning all events each time.
+    // Replaced as a whole on reload; the ProtocolLib listener reads it off the main thread.
+    private volatile Map<EventType, List<CEEvent>> eventsByType;
     public EventsManager(ConditionalEvents plugin){
         this.plugin = plugin;
-        this.events = new ArrayList<CEEvent>();
+        setEvents(new ArrayList<CEEvent>());
     }
 
     public void setEvents(ArrayList<CEEvent> events) {
         this.events = events;
+        Map<EventType, List<CEEvent>> byType = new EnumMap<>(EventType.class);
+        for(CEEvent event : events){
+            byType.computeIfAbsent(event.getEventType(), type -> new ArrayList<>()).add(event);
+        }
+        this.eventsByType = byType;
+    }
+
+    private List<CEEvent> eventsOfType(EventType eventType){
+        return eventsByType.getOrDefault(eventType, Collections.emptyList());
     }
 
     public ArrayList<CEEvent> getEvents() {
@@ -173,8 +189,9 @@ public class EventsManager {
 
     public ArrayList<CEEvent> getValidEvents(EventType eventType){
         ArrayList<CEEvent> validEvents = new ArrayList<CEEvent>();
-        for(CEEvent event : events){
-            if(event.getEventType().equals(eventType) && event.isEnabled()){
+        // /ce enable and /ce disable change isEnabled at runtime, so it is checked here, not in the index
+        for(CEEvent event : eventsOfType(eventType)){
+            if(event.isEnabled()){
                 validEvents.add(event);
             }
         }
@@ -182,13 +199,7 @@ public class EventsManager {
     }
 
     public ArrayList<CEEvent> getEventsByType(EventType eventType){
-        ArrayList<CEEvent> validEvents = new ArrayList<>();
-        for(CEEvent event : events){
-            if(event.getEventType().equals(eventType)){
-                validEvents.add(event);
-            }
-        }
-        return validEvents;
+        return new ArrayList<>(eventsOfType(eventType));
     }
 
     private CheckConditionsResult checkConditions(ConditionEvent conditionEvent, boolean isPlaceholderAPI){
